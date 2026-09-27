@@ -1,0 +1,13 @@
+{
+  "name": "ch-timer-app",
+  "version": "1.0.0",
+  "description": "多人同步 CH 計時器 (ch1~ch60)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
