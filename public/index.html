@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CH 多人計時器</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>CH 多人計時器</h1>
+    <div id="connStatus" class="conn-status">連線中...</div>
+  </header>
+
+  <div id="tabsBar" class="tabs-bar">
+    <div id="tabsList" class="tabs-list"></div>
+    <button id="addTabBtn" class="add-tab-btn" title="新增分頁">＋ 新增分頁</button>
+  </div>
+
+  <div class="range-panel">
+    <label>最小值（分鐘）
+      <input type="number" id="minInput" min="1" />
+    </label>
+    <label>最大值（分鐘）
+      <input type="number" id="maxInput" min="1" />
+    </label>
+    <span class="range-hint">此為本分頁的預設值；個別 CH 可用右鍵自訂覆蓋</span>
+  </div>
+
+  <div id="grid" class="grid"></div>
+
+  <div class="legend">
+    <span class="legend-item"><span class="dot idle"></span>待機</span>
+    <span class="legend-item"><span class="dot counting"></span>倒數中</span>
+    <span class="legend-item"><span class="dot appearing"></span>出現中</span>
+  </div>
+</div>
+
+<div id="modalOverlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="modalTitle">設定 CH 倒數時間</h3>
+    <label>最小值（分鐘）
+      <input type="number" id="modalMin" min="1" />
+    </label>
+    <label>最大值（分鐘）
+      <input type="number" id="modalMax" min="1" />
+    </label>
+    <p class="modal-note">留空並按「還原」可改回使用分頁預設值</p>
+    <div class="modal-buttons">
+      <button id="modalResetBtn" class="btn-secondary">還原為分頁預設</button>
+      <button id="modalCancelBtn" class="btn-secondary">取消</button>
+      <button id="modalSaveBtn" class="btn-primary">儲存</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="client.js"></script>
+</body>
+</html>
