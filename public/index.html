@@ -10,12 +10,26 @@
 <div id="app">
   <header>
     <h1>CH 多人計時器</h1>
-    <div id="connStatus" class="conn-status">連線中...</div>
+    <div class="header-right">
+      <span id="myNicknameDisplay" class="my-nickname"></span>
+      <button id="adminEditSelfBtn" class="admin-btn hidden" title="管理者：修改自己的暱稱">✎</button>
+      <div id="connStatus" class="conn-status">連線中...</div>
+    </div>
   </header>
+
+  <div id="adminPanel" class="admin-panel hidden">
+    <div class="admin-panel-title">🔑 管理者模式：線上使用者</div>
+    <div id="adminUserList" class="admin-user-list"></div>
+  </div>
 
   <div id="tabsBar" class="tabs-bar">
     <div id="tabsList" class="tabs-list"></div>
     <button id="addTabBtn" class="add-tab-btn" title="新增分頁">＋ 新增分頁</button>
+  </div>
+
+  <div class="boss-banner">
+    <img id="bossImage" class="boss-image hidden" alt="" />
+    <div id="bossName" class="boss-name"></div>
   </div>
 
   <div class="range-panel">
@@ -35,8 +49,28 @@
     <span class="legend-item"><span class="dot counting"></span>倒數中</span>
     <span class="legend-item"><span class="dot appearing"></span>出現中</span>
   </div>
+
+  <div class="status-panel">
+    <div class="status-panel-title">📋 目前進行中（所有分頁）</div>
+    <div id="statusList" class="status-list">
+      <div class="status-empty">目前沒有任何 CH 在倒數中</div>
+    </div>
+  </div>
 </div>
 
+<!-- 暱稱設定：強制彈窗，未設定前無法操作 -->
+<div id="nicknameOverlay" class="modal-overlay">
+  <div class="modal">
+    <h3>請先輸入您的暱稱</h3>
+    <p class="modal-note">暱稱將顯示在您點擊的 CH 旁邊，讓大家知道是誰觸發倒數。<br />設定後將無法自行更改，請謹慎輸入。</p>
+    <input type="text" id="nicknameInput" maxlength="20" placeholder="輸入暱稱..." />
+    <div class="modal-buttons">
+      <button id="nicknameSubmitBtn" class="btn-primary">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- 右鍵：設定 CH 倒數時間 -->
 <div id="modalOverlay" class="modal-overlay hidden">
   <div class="modal">
     <h3 id="modalTitle">設定 CH 倒數時間</h3>
@@ -46,7 +80,7 @@
     <label>最大值（分鐘）
       <input type="number" id="modalMax" min="1" />
     </label>
-    <p class="modal-note">留空並按「還原」可改回使用分頁預設值</p>
+    <p class="modal-note" id="modalStateNote"></p>
     <div class="modal-buttons">
       <button id="modalResetBtn" class="btn-secondary">還原為分頁預設</button>
       <button id="modalCancelBtn" class="btn-secondary">取消</button>
