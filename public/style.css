@@ -30,11 +30,37 @@ header {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 header h1 {
   font-size: 22px;
   margin: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-nickname {
+  font-size: 13px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.admin-btn {
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 7px;
 }
 
 .conn-status {
@@ -52,6 +78,43 @@ header h1 {
   background: #fee2e2;
   color: #991b1b;
 }
+
+/* Admin panel */
+.admin-panel {
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.admin-panel-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.admin-user-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1f2937;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.admin-user-row button {
+  border: none;
+  background: #374151;
+  color: #f9fafb;
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.admin-user-row button:hover { background: #4b5563; }
 
 .tabs-bar {
   display: flex;
@@ -71,7 +134,7 @@ header h1 {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   border-radius: 8px;
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -84,6 +147,13 @@ header h1 {
   background: #1f2937;
   color: #fff;
   border-color: #1f2937;
+}
+
+.tab-item .tab-thumb {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .tab-item .close-btn {
@@ -107,6 +177,29 @@ header h1 {
   font-size: 14px;
 }
 .add-tab-btn:hover { background: #eef2ff; }
+
+.boss-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  min-height: 28px;
+}
+.boss-image {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+.boss-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
 
 .range-panel {
   display: flex;
@@ -169,6 +262,8 @@ header h1 {
   font-size: 14px;
   transition: background 0.2s, color 0.2s, transform 0.1s;
   user-select: none;
+  padding: 4px 2px;
+  text-align: center;
 }
 
 .ch-btn:hover { transform: scale(1.03); }
@@ -183,6 +278,15 @@ header h1 {
   font-size: 12px;
   margin-top: 2px;
   font-family: "Consolas", monospace;
+}
+.ch-btn .ch-who {
+  font-size: 10px;
+  margin-top: 2px;
+  font-weight: 700;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ch-btn .custom-flag {
   position: absolute;
@@ -229,6 +333,62 @@ header h1 {
 .dot.counting { background: var(--counting-bg); }
 .dot.appearing { background: var(--appearing-bg); }
 
+/* Status panel */
+.status-panel {
+  margin-top: 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.status-panel-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.status-empty {
+  color: #9ca3af;
+  font-size: 13px;
+}
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f9fafb;
+  cursor: pointer;
+}
+.status-row:hover { background: #eef2ff; }
+.status-row .status-tag {
+  font-weight: 700;
+  min-width: 100px;
+}
+.status-row .status-ch {
+  min-width: 44px;
+  color: #4b5563;
+}
+.status-row .status-who {
+  color: #1d4ed8;
+  font-weight: 600;
+  min-width: 80px;
+}
+.status-row .status-state {
+  min-width: 56px;
+}
+.status-row .status-state.counting { color: #2563eb; }
+.status-row .status-state.appearing { color: #ea580c; font-weight: 700; }
+.status-row .status-time {
+  margin-left: auto;
+  font-family: "Consolas", monospace;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -262,6 +422,14 @@ header h1 {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+.modal input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
 .modal-note {
   font-size: 12px;
   color: #6b7280;
@@ -288,3 +456,5 @@ header h1 {
 .btn-secondary {
   background: #f9fafb;
 }
+
+.hidden { display: none !important; }
