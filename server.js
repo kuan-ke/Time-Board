@@ -9,8 +9,9 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 const CHANNEL_COUNT = 60;
+const MAX_LOG = 500; // 操作紀錄最多保留筆數（避免伺服器記憶體無限成長）
 
-// 管理者密鑰：用來讓網站擁有者強制修改別人的暱稱。
+// 管理者密鑰：用來讓網站擁有者強制修改 / 隱藏 / 移除別人。
 // 建議在 Render 的環境變數設定 ADMIN_KEY，不要用預設值。
 const ADMIN_KEY = process.env.ADMIN_KEY || 'change-me-admin-key';
 
@@ -58,9 +59,25 @@ let tabs = BOSS_PRESETS.map((b) => createTab(b.name, b.min, b.max, b.image));
 
 // 目前連線中的使用者：socket.id -> nickname
 const connectedUsers = new Map();
+// 已被管理者移除、不可再使用的暱稱（小寫比對）
+const bannedNicknames = new Set();
+// 永久操作紀錄（伺服器記憶體內，重啟會清空；最多保留 MAX_LOG 筆）
+let activityLog = [];
+
+function normalizeName(name) {
+  return (name || '').trim().toLowerCase();
+}
 
 function findTab(tabId) {
   return tabs.find((t) => t.id === tabId);
+}
+
+function isNicknameTaken(name, excludeSocketId) {
+  const norm = normalizeName(name);
+  for (const [id, n] of connectedUsers.entries()) {
+    if (id !== excludeSocketId && normalizeName(n) === norm) return true;
+  }
+  return false;
 }
 
 function broadcastState() {
@@ -72,7 +89,19 @@ function broadcastUsers() {
   io.emit('users:update', list);
 }
 
-// 每秒檢查所有 CH 是否跨過 min / max 門檻
+function addLog(message, type) {
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    time: Date.now(),
+    message,
+    type: type || 'user'
+  };
+  activityLog.unshift(entry);
+  if (activityLog.length > MAX_LOG) activityLog.length = MAX_LOG;
+  io.emit('log:new', entry);
+}
+
+// 每秒檢查所有 CH 是否跨過 min / max 門檻（自動觸發，不寫入操作紀錄）
 function tick() {
   const now = Date.now();
   let changed = false;
@@ -104,14 +133,24 @@ function tick() {
 setInterval(tick, 1000);
 
 io.on('connection', (socket) => {
-  // 新連線的人先拿到完整現況
+  // 新連線的人先拿到完整現況 + 操作紀錄
   socket.emit('state:init', { tabs, serverTime: Date.now() });
-  socket.emit('adminConfig', { requiresKeyToUnlock: true });
+  socket.emit('log:init', activityLog);
 
   // ---------- 暱稱 ----------
   socket.on('setNickname', (name) => {
     const trimmed = (name || '').trim().slice(0, 20);
     if (!trimmed) return;
+
+    if (bannedNicknames.has(normalizeName(trimmed))) {
+      socket.emit('nickname:banned');
+      return;
+    }
+    if (isNicknameTaken(trimmed, socket.id)) {
+      socket.emit('nickname:taken');
+      return;
+    }
+
     socket.data.nickname = trimmed;
     connectedUsers.set(socket.id, trimmed);
     socket.emit('nickname:ack', trimmed);
@@ -133,10 +172,49 @@ io.on('connection', (socket) => {
     const targetSocket = io.sockets.sockets.get(targetSocketId);
     if (!targetSocket) return;
 
+    const oldName = targetSocket.data.nickname;
     targetSocket.data.nickname = trimmed;
     connectedUsers.set(targetSocketId, trimmed);
     targetSocket.emit('forceNickname', trimmed);
     broadcastUsers();
+    addLog(`管理者將「${oldName}」的暱稱改為「${trimmed}」`, 'admin');
+  });
+
+  // 管理者隱藏（清除）某位使用者目前所有進行中的計時器
+  socket.on('adminHideUserTimers', ({ nickname }) => {
+    if (!socket.data.isAdmin) return;
+    if (!nickname) return;
+    let changed = false;
+    tabs.forEach((tab) => {
+      tab.channels.forEach((ch) => {
+        if (ch.startedBy === nickname && ch.state !== 'idle') {
+          ch.state = 'idle';
+          ch.startTime = null;
+          ch.startedBy = null;
+          changed = true;
+        }
+      });
+    });
+    if (changed) {
+      broadcastState();
+      addLog(`管理者隱藏了「${nickname}」目前所有進行中的計時器`, 'admin');
+    }
+  });
+
+  // 管理者移除成員：中斷連線 + 禁用該暱稱
+  socket.on('adminRemoveUser', ({ targetSocketId, nickname }) => {
+    if (!socket.data.isAdmin) return;
+    if (!nickname) return;
+
+    bannedNicknames.add(normalizeName(nickname));
+    const targetSocket = io.sockets.sockets.get(targetSocketId);
+    if (targetSocket) {
+      targetSocket.emit('removedByAdmin');
+      targetSocket.disconnect(true);
+    }
+    connectedUsers.delete(targetSocketId);
+    broadcastUsers();
+    addLog(`管理者將「${nickname}」移除出網站`, 'admin');
   });
 
   // ---------- 分頁 ----------
@@ -186,10 +264,12 @@ io.on('connection', (socket) => {
       ch.state = 'counting';
       ch.startTime = Date.now();
       ch.startedBy = nickname;
+      addLog(`${nickname} 在「${tab.name}」啟動了 CH${channelIndex + 1} 倒數`, 'start');
     } else {
       ch.state = 'idle';
       ch.startTime = null;
       ch.startedBy = null;
+      addLog(`${nickname} 手動停止了「${tab.name}」CH${channelIndex + 1} 的倒數`, 'stop');
     }
     broadcastState();
   });
@@ -213,6 +293,12 @@ io.on('connection', (socket) => {
       ch.state = 'counting';
       ch.startTime = Date.now();
       ch.startedBy = nickname;
+      addLog(
+        `${nickname} 設定「${tab.name}」CH${channelIndex + 1} 自訂時間（${ch.customMin ?? tab.minMinutes}~${ch.customMax ?? tab.maxMinutes} 分）並開始倒數`,
+        'start'
+      );
+    } else {
+      addLog(`${nickname} 更新了「${tab.name}」CH${channelIndex + 1} 的自訂時間設定`, 'update');
     }
     broadcastState();
   });
