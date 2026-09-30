@@ -38,13 +38,14 @@ const nicknameSubmitBtn = document.getElementById('nicknameSubmitBtn');
 const nicknameError = document.getElementById('nicknameError');
 
 const modalOverlay = document.getElementById('modalOverlay');
-const modalMin = document.getElementById('modalMin');
-const modalMax = document.getElementById('modalMax');
+const modalTargetTime = document.getElementById('modalTargetTime');
 const modalTitle = document.getElementById('modalTitle');
 const modalStateNote = document.getElementById('modalStateNote');
 const modalResetBtn = document.getElementById('modalResetBtn');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
 const modalSaveBtn = document.getElementById('modalSaveBtn');
+const adminClearLogBtn = document.getElementById('adminClearLogBtn');
+const rangeHintEl = document.getElementById('rangeHint');
 
 // ---------- Nickname (mandatory, locked after set) ----------
 function initNickname() {
@@ -143,11 +144,19 @@ initNickname();
 socket.on('adminAuth:result', (ok) => {
   isAdmin = ok;
   if (ok) {
+    document.body.classList.add('is-admin');
     adminPanel.classList.remove('hidden');
     adminEditSelfBtn.classList.remove('hidden');
+    adminClearLogBtn.classList.remove('hidden');
     renderAdminUserList();
   } else {
     alert('管理者密鑰錯誤');
+  }
+});
+
+adminClearLogBtn.addEventListener('click', () => {
+  if (confirm('確定要清空全部操作紀錄嗎？此動作無法復原。')) {
+    socket.emit('adminClearLog');
   }
 });
 
@@ -280,9 +289,29 @@ socket.on('log:new', (entry) => {
   logListEl.insertBefore(buildLogRow(entry), logListEl.firstChild);
 });
 
+socket.on('log:remove', (logId) => {
+  const row = logListEl.querySelector(`[data-id="${logId}"]`);
+  if (row) row.remove();
+  if (!logListEl.querySelector('.log-row')) {
+    const empty = document.createElement('div');
+    empty.className = 'status-empty';
+    empty.textContent = '尚無任何操作紀錄';
+    logListEl.appendChild(empty);
+  }
+});
+
+socket.on('log:clear', () => {
+  logListEl.innerHTML = '';
+  const empty = document.createElement('div');
+  empty.className = 'status-empty';
+  empty.textContent = '尚無任何操作紀錄';
+  logListEl.appendChild(empty);
+});
+
 function buildLogRow(entry) {
   const row = document.createElement('div');
   row.className = 'log-row' + (entry.type === 'admin' ? ' admin' : '');
+  row.dataset.id = entry.id;
 
   const time = document.createElement('span');
   time.className = 'log-time';
@@ -293,6 +322,15 @@ function buildLogRow(entry) {
   msg.className = 'log-message';
   msg.textContent = entry.message;
   row.appendChild(msg);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'log-del-btn';
+  delBtn.textContent = '✕';
+  delBtn.title = '刪除這筆紀錄';
+  delBtn.addEventListener('click', () => {
+    socket.emit('adminDeleteLogEntry', entry.id);
+  });
+  row.appendChild(delBtn);
 
   return row;
 }
@@ -322,7 +360,15 @@ function renderTabs() {
     nameSpan.textContent = tab.name;
     el.appendChild(nameSpan);
 
-    if (tabs.length > 1) {
+    if (tab.locked) {
+      const lockSpan = document.createElement('span');
+      lockSpan.className = 'tab-lock';
+      lockSpan.textContent = '🔒';
+      lockSpan.title = '固定王，無法刪除或修改時間範圍';
+      el.appendChild(lockSpan);
+    }
+
+    if (!tab.locked && tabs.length > 1) {
       const closeBtn = document.createElement('span');
       closeBtn.textContent = '✕';
       closeBtn.className = 'close-btn';
@@ -385,6 +431,11 @@ function renderRangePanel() {
   if (!tab) return;
   minInput.value = tab.minMinutes;
   maxInput.value = tab.maxMinutes;
+  minInput.disabled = !!tab.locked;
+  maxInput.disabled = !!tab.locked;
+  rangeHintEl.textContent = tab.locked
+    ? '🔒 固定王，時間範圍無法修改（CH 仍可右鍵設定目標時刻）'
+    : 'CH 可右鍵自訂目標時刻';
 }
 
 function submitRangeChange() {
@@ -592,18 +643,27 @@ setInterval(() => {
   renderStatusPanel();
 }, 1000);
 
-// ---------- Modal (right-click custom time) ----------
+// ---------- Modal (right-click：輸入目標時刻) ----------
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// 把「現在起 minutesFromNow 分鐘後」換算成 HH:MM，用來預先帶入輸入框
+function minutesFromNowToHHMM(minutesFromNow) {
+  const t = new Date(Date.now() + clockOffset + minutesFromNow * 60000);
+  return `${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
+}
+
 function openModal(tab, channelIndex) {
   const ch = tab.channels[channelIndex];
   modalContext = { tabId: tab.id, channelIndex };
-  modalTitle.textContent = `設定 CH${channelIndex + 1} 倒數時間`;
-  modalMin.value = ch.customMin ?? tab.minMinutes;
-  modalMax.value = ch.customMax ?? tab.maxMinutes;
+  modalTitle.textContent = `設定 CH${channelIndex + 1} 倒數目標時刻`;
+
+  const minutesUntilReminder = ch.customMin ?? tab.minMinutes;
+  modalTargetTime.value = minutesFromNowToHHMM(minutesUntilReminder);
 
   if (ch.state === 'idle') {
-    modalStateNote.textContent = '此 CH 目前待機中：儲存後將以此設定「立即開始倒數」。';
+    modalStateNote.textContent = '輸入預計出現的時刻（例如 22:30），儲存後會立即開始倒數到該時刻。若輸入的時間已經過了，會自動視為明天的這個時間。';
   } else {
-    modalStateNote.textContent = '此 CH 正在倒數中：儲存只會更新之後的預設時間，不會中斷目前的倒數。';
+    modalStateNote.textContent = '此 CH 正在倒數中：儲存只會更新目標時刻，不會中斷目前的倒數。';
   }
 
   modalOverlay.classList.remove('hidden');
@@ -618,11 +678,14 @@ modalCancelBtn.addEventListener('click', closeModal);
 
 modalSaveBtn.addEventListener('click', () => {
   if (!modalContext) return;
+  if (!modalTargetTime.value) {
+    modalTargetTime.focus();
+    return;
+  }
   socket.emit('channelSetCustom', {
     tabId: modalContext.tabId,
     channelIndex: modalContext.channelIndex,
-    customMin: modalMin.value,
-    customMax: modalMax.value
+    targetTime: modalTargetTime.value
   });
   closeModal();
 });
@@ -632,8 +695,7 @@ modalResetBtn.addEventListener('click', () => {
   socket.emit('channelSetCustom', {
     tabId: modalContext.tabId,
     channelIndex: modalContext.channelIndex,
-    customMin: null,
-    customMax: null
+    targetTime: null
   });
   closeModal();
 });
