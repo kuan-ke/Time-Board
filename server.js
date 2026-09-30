@@ -295,9 +295,9 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // ---------- CH 右鍵：輸入一個精確的時刻（例如 22:30），開始倒數到那個時間點 ----------
-  // targetTime 為 "HH:MM" 字串；傳 null 代表還原為分頁預設時間
-  socket.on('channelSetCustom', ({ tabId, channelIndex, targetTime }) => {
+  // ---------- CH 右鍵：輸入王的「死亡時間」（例如 23:50），從那個過去的時刻開始倒數 ----------
+  // deathTime 為 "HH:MM" 字串；傳 null 代表清除、恢復待機
+  socket.on('channelSetCustom', ({ tabId, channelIndex, deathTime }) => {
     const nickname = socket.data.nickname;
     if (!nickname) {
       socket.emit('error:needNickname');
@@ -308,41 +308,40 @@ io.on('connection', (socket) => {
     const ch = tab.channels[channelIndex];
     if (!ch) return;
 
-    if (targetTime === null || targetTime === '') {
+    if (deathTime === null || deathTime === '') {
+      const wasActive = ch.state !== 'idle';
+      ch.state = 'idle';
+      ch.startTime = null;
       ch.customMin = null;
       ch.customMax = null;
-      addLog(`${nickname} 將「${tab.name}」CH${channelIndex + 1} 的自訂時間還原為分頁預設`, 'update');
-      broadcastState();
+      ch.startedBy = null;
+      if (wasActive) {
+        addLog(`${nickname} 透過右鍵重設了「${tab.name}」CH${channelIndex + 1}（恢復待機）`, 'stop');
+        broadcastState();
+      }
       return;
     }
 
-    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(targetTime).trim());
+    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(deathTime).trim());
     if (!match) return;
     const hh = Number(match[1]);
     const mm = Number(match[2]);
 
     const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
-    if (target.getTime() <= now.getTime()) {
-      target.setDate(target.getDate() + 1); // 該時刻已經過了 -> 視為明天這個時間
+    const death = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+    if (death.getTime() > now.getTime()) {
+      death.setDate(death.getDate() - 1); // 該時刻還沒到 -> 視為昨天（死亡時間一定是過去式）
     }
 
-    const diffMin = (target.getTime() - now.getTime()) / 60000;
-    const gapMin = Math.max(0, tab.maxMinutes - tab.minMinutes); // 維持與分頁預設相同的「提醒→重置」間隔
-
-    ch.customMin = diffMin;
-    ch.customMax = diffMin + gapMin;
+    // 死亡時間直接當作起算點，之後照分頁的最小值/最大值自動計算提醒與重置
+    ch.customMin = null;
+    ch.customMax = null;
+    ch.state = 'counting';
+    ch.startTime = death.getTime();
+    ch.startedBy = nickname;
 
     const timeLabel = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-
-    if (ch.state === 'idle') {
-      ch.state = 'counting';
-      ch.startTime = Date.now();
-      ch.startedBy = nickname;
-      addLog(`${nickname} 設定「${tab.name}」CH${channelIndex + 1} 倒數至 ${timeLabel}，並開始倒數`, 'start');
-    } else {
-      addLog(`${nickname} 更新了「${tab.name}」CH${channelIndex + 1} 的目標時間為 ${timeLabel}`, 'update');
-    }
+    addLog(`${nickname} 回報「${tab.name}」CH${channelIndex + 1} 的死亡時間為 ${timeLabel}，開始倒數`, 'start');
     broadcastState();
   });
 
