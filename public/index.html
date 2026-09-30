@@ -8,9 +8,16 @@
 </head>
 <body>
 <div id="app">
-  <header>
-    <h1>CH 多人計時器</h1>
-    <div class="header-right">
+
+  <header class="top-bar">
+    <div class="top-bar-left">
+      <h1>CH 多人計時器</h1>
+      <div id="onlineUsersBar" class="online-users-bar">
+        <span class="online-label">🟢 線上 <span id="onlineCount">0</span> 人：</span>
+        <span id="onlineNames" class="online-names"></span>
+      </div>
+    </div>
+    <div class="top-bar-right">
       <span id="myNicknameDisplay" class="my-nickname"></span>
       <button id="adminEditSelfBtn" class="admin-btn hidden" title="管理者：修改自己的暱稱">✎</button>
       <div id="connStatus" class="conn-status">連線中...</div>
@@ -18,44 +25,49 @@
   </header>
 
   <div id="adminPanel" class="admin-panel hidden">
-    <div class="admin-panel-title">🔑 管理者模式：線上使用者</div>
+    <span class="admin-panel-title">🔑 管理者：</span>
     <div id="adminUserList" class="admin-user-list"></div>
   </div>
 
-  <div id="tabsBar" class="tabs-bar">
+  <div class="tabs-row">
     <div id="tabsList" class="tabs-list"></div>
-    <button id="addTabBtn" class="add-tab-btn" title="新增分頁">＋ 新增分頁</button>
+    <button id="addTabBtn" class="add-tab-btn" title="新增分頁">＋</button>
   </div>
 
-  <div class="boss-banner">
-    <img id="bossImage" class="boss-image hidden" alt="" />
-    <div id="bossName" class="boss-name"></div>
-  </div>
-
-  <div class="range-panel">
-    <label>最小值（分鐘）
-      <input type="number" id="minInput" min="1" />
-    </label>
-    <label>最大值（分鐘）
-      <input type="number" id="maxInput" min="1" />
-    </label>
-    <span class="range-hint">此為本分頁的預設值；個別 CH 可用右鍵自訂覆蓋</span>
+  <div class="boss-range-row">
+    <div class="boss-info">
+      <img id="bossImage" class="boss-image hidden" alt="" />
+      <div id="bossName" class="boss-name"></div>
+    </div>
+    <div class="range-panel">
+      <label>最小值(分)<input type="number" id="minInput" min="1" /></label>
+      <label>最大值(分)<input type="number" id="maxInput" min="1" /></label>
+      <span class="range-hint">CH 可右鍵自訂覆蓋</span>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="dot idle"></span>待機</span>
+      <span class="legend-item"><span class="dot counting"></span>倒數中</span>
+      <span class="legend-item"><span class="dot appearing"></span>出現中</span>
+    </div>
   </div>
 
   <div id="grid" class="grid"></div>
 
-  <div class="legend">
-    <span class="legend-item"><span class="dot idle"></span>待機</span>
-    <span class="legend-item"><span class="dot counting"></span>倒數中</span>
-    <span class="legend-item"><span class="dot appearing"></span>出現中</span>
-  </div>
-
-  <div class="status-panel">
-    <div class="status-panel-title">📋 目前進行中（所有分頁）</div>
-    <div id="statusList" class="status-list">
-      <div class="status-empty">目前沒有任何 CH 在倒數中</div>
+  <div class="bottom-row">
+    <div class="panel active-panel">
+      <div class="panel-title">📋 進行中頻道（即時，結束後自動消失）</div>
+      <div id="statusList" class="status-list scrollable">
+        <div class="status-empty">目前沒有任何 CH 在倒數中</div>
+      </div>
+    </div>
+    <div class="panel log-panel">
+      <div class="panel-title">🗂 操作紀錄（永久保留，不會被清除）</div>
+      <div id="logList" class="log-list scrollable">
+        <div class="status-empty">尚無任何操作紀錄</div>
+      </div>
     </div>
   </div>
+
 </div>
 
 <!-- 暱稱設定：強制彈窗，未設定前無法操作 -->
@@ -64,6 +76,7 @@
     <h3>請先輸入您的暱稱</h3>
     <p class="modal-note">暱稱將顯示在您點擊的 CH 旁邊，讓大家知道是誰觸發倒數。<br />設定後將無法自行更改，請謹慎輸入。</p>
     <input type="text" id="nicknameInput" maxlength="20" placeholder="輸入暱稱..." />
+    <div id="nicknameError" class="nickname-error hidden"></div>
     <div class="modal-buttons">
       <button id="nicknameSubmitBtn" class="btn-primary">確認</button>
     </div>
