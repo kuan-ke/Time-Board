@@ -480,14 +480,6 @@ function renderGrid() {
     whoEl.className = 'ch-who';
     btn.appendChild(whoEl);
 
-    if (ch.customMin !== null || ch.customMax !== null) {
-      const flag = document.createElement('div');
-      flag.className = 'custom-flag';
-      flag.textContent = '★';
-      flag.title = '此 CH 使用自訂時間';
-      btn.appendChild(flag);
-    }
-
     btn.addEventListener('click', () => {
       if (!ensureNickname()) return;
       socket.emit('channelClick', { tabId: tab.id, channelIndex: i });
@@ -643,28 +635,23 @@ setInterval(() => {
   renderStatusPanel();
 }, 1000);
 
-// ---------- Modal (right-click：輸入目標時刻) ----------
+// ---------- Modal (右鍵：回報死亡時間) ----------
 function pad2(n) { return String(n).padStart(2, '0'); }
 
-// 把「現在起 minutesFromNow 分鐘後」換算成 HH:MM，用來預先帶入輸入框
-function minutesFromNowToHHMM(minutesFromNow) {
-  const t = new Date(Date.now() + clockOffset + minutesFromNow * 60000);
+function nowHHMM() {
+  const t = new Date(Date.now() + clockOffset);
   return `${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
 }
 
 function openModal(tab, channelIndex) {
   const ch = tab.channels[channelIndex];
   modalContext = { tabId: tab.id, channelIndex };
-  modalTitle.textContent = `設定 CH${channelIndex + 1} 倒數目標時刻`;
+  modalTitle.textContent = `回報 CH${channelIndex + 1} 死亡時間`;
 
-  const minutesUntilReminder = ch.customMin ?? tab.minMinutes;
-  modalTargetTime.value = minutesFromNowToHHMM(minutesUntilReminder);
+  // 預設帶入「現在」，代表王剛剛才死
+  modalTargetTime.value = nowHHMM();
 
-  if (ch.state === 'idle') {
-    modalStateNote.textContent = '輸入預計出現的時刻（例如 22:30），儲存後會立即開始倒數到該時刻。若輸入的時間已經過了，會自動視為明天的這個時間。';
-  } else {
-    modalStateNote.textContent = '此 CH 正在倒數中：儲存只會更新目標時刻，不會中斷目前的倒數。';
-  }
+  modalStateNote.textContent = '請輸入王被擊殺的時間（例如 23:50）。若輸入的時間比現在晚，會自動視為昨天的這個時間，因為死亡時間一定是過去式。儲存後會以此時間重新計算倒數，並覆蓋此 CH 目前的狀態。';
 
   modalOverlay.classList.remove('hidden');
 }
@@ -685,7 +672,7 @@ modalSaveBtn.addEventListener('click', () => {
   socket.emit('channelSetCustom', {
     tabId: modalContext.tabId,
     channelIndex: modalContext.channelIndex,
-    targetTime: modalTargetTime.value
+    deathTime: modalTargetTime.value
   });
   closeModal();
 });
@@ -695,7 +682,7 @@ modalResetBtn.addEventListener('click', () => {
   socket.emit('channelSetCustom', {
     tabId: modalContext.tabId,
     channelIndex: modalContext.channelIndex,
-    targetTime: null
+    deathTime: null
   });
   closeModal();
 });
