@@ -22,6 +22,10 @@ const gridEl = document.getElementById('grid');
 const bossImageEl = document.getElementById('bossImage');
 const bossNameEl = document.getElementById('bossName');
 const statusListEl = document.getElementById('statusList');
+const logListEl = document.getElementById('logList');
+
+const onlineCountEl = document.getElementById('onlineCount');
+const onlineNamesEl = document.getElementById('onlineNames');
 
 const myNicknameDisplay = document.getElementById('myNicknameDisplay');
 const adminEditSelfBtn = document.getElementById('adminEditSelfBtn');
@@ -31,6 +35,7 @@ const adminUserList = document.getElementById('adminUserList');
 const nicknameOverlay = document.getElementById('nicknameOverlay');
 const nicknameInput = document.getElementById('nicknameInput');
 const nicknameSubmitBtn = document.getElementById('nicknameSubmitBtn');
+const nicknameError = document.getElementById('nicknameError');
 
 const modalOverlay = document.getElementById('modalOverlay');
 const modalMin = document.getElementById('modalMin');
@@ -54,9 +59,15 @@ function initNickname() {
   updateNicknameDisplay();
 }
 
-function showNicknameOverlay() {
+function showNicknameOverlay(errorMsg) {
   nicknameOverlay.classList.remove('hidden');
   nicknameInput.value = '';
+  if (errorMsg) {
+    nicknameError.textContent = errorMsg;
+    nicknameError.classList.remove('hidden');
+  } else {
+    nicknameError.classList.add('hidden');
+  }
   setTimeout(() => nicknameInput.focus(), 50);
 }
 function hideNicknameOverlay() {
@@ -69,11 +80,9 @@ function submitNickname() {
     nicknameInput.focus();
     return;
   }
-  myNickname = val.slice(0, 20);
-  localStorage.setItem(NICKNAME_KEY, myNickname);
-  socket.emit('setNickname', myNickname);
-  hideNicknameOverlay();
-  updateNicknameDisplay();
+  const candidate = val.slice(0, 20);
+  socket.emit('setNickname', candidate);
+  // 先不鎖定 localStorage，等伺服器 ack 成功後才儲存（避免暱稱重複/被禁用卻鎖死）
 }
 
 nicknameSubmitBtn.addEventListener('click', submitNickname);
@@ -87,7 +96,18 @@ function updateNicknameDisplay() {
 
 socket.on('nickname:ack', (name) => {
   myNickname = name;
+  localStorage.setItem(NICKNAME_KEY, name);
   updateNicknameDisplay();
+  hideNicknameOverlay();
+});
+
+socket.on('nickname:taken', () => {
+  showNicknameOverlay('這個暱稱已經有人在使用，請換一個');
+});
+
+socket.on('nickname:banned', () => {
+  localStorage.removeItem(NICKNAME_KEY);
+  showNicknameOverlay('這個暱稱已被管理者移除，請使用其他暱稱');
 });
 
 // 伺服器管理者強制修改了「我」的暱稱
@@ -96,6 +116,13 @@ socket.on('forceNickname', (name) => {
   localStorage.setItem(NICKNAME_KEY, name);
   updateNicknameDisplay();
   hideNicknameOverlay();
+});
+
+socket.on('removedByAdmin', () => {
+  localStorage.removeItem(NICKNAME_KEY);
+  myNickname = null;
+  updateNicknameDisplay();
+  showNicknameOverlay('您已被管理者移除，請重新輸入暱稱加入');
 });
 
 socket.on('error:needNickname', () => {
@@ -127,40 +154,68 @@ socket.on('adminAuth:result', (ok) => {
 adminEditSelfBtn.addEventListener('click', () => {
   const newName = prompt('（管理者）修改您自己的暱稱：', myNickname || '');
   if (newName !== null && newName.trim()) {
-    myNickname = newName.trim().slice(0, 20);
-    localStorage.setItem(NICKNAME_KEY, myNickname);
-    socket.emit('setNickname', myNickname);
-    updateNicknameDisplay();
+    socket.emit('setNickname', newName.trim().slice(0, 20));
   }
 });
 
 socket.on('users:update', (list) => {
   onlineUsers = list;
+  renderOnlineUsersBar();
   if (isAdmin) renderAdminUserList();
 });
+
+function renderOnlineUsersBar() {
+  onlineCountEl.textContent = onlineUsers.length;
+  onlineNamesEl.textContent = onlineUsers.map((u) => u.name).join('、');
+}
 
 function renderAdminUserList() {
   adminUserList.innerHTML = '';
   if (onlineUsers.length === 0) {
-    adminUserList.innerHTML = '<span style="color:#9ca3af;">目前沒有已設定暱稱的使用者</span>';
+    adminUserList.innerHTML = '<span style="color:#64748b;">目前沒有已設定暱稱的使用者</span>';
     return;
   }
   onlineUsers.forEach((u) => {
     const row = document.createElement('div');
     row.className = 'admin-user-row';
+
     const nameSpan = document.createElement('span');
+    nameSpan.className = 'u-name';
     nameSpan.textContent = u.name;
     row.appendChild(nameSpan);
 
-    const editBtn = document.createElement('button');
-    editBtn.textContent = '修改';
-    editBtn.addEventListener('click', () => {
+    const renameBtn = document.createElement('button');
+    renameBtn.textContent = '改名';
+    renameBtn.title = '修改此人的暱稱';
+    renameBtn.addEventListener('click', () => {
       const newName = prompt(`修改「${u.name}」的暱稱：`, u.name);
       if (newName !== null && newName.trim()) {
         socket.emit('adminRenameUser', { targetSocketId: u.id, newName: newName.trim() });
       }
     });
-    row.appendChild(editBtn);
+    row.appendChild(renameBtn);
+
+    const hideBtn = document.createElement('button');
+    hideBtn.textContent = '隱藏計時器';
+    hideBtn.title = '清除此人目前所有進行中的倒數';
+    hideBtn.addEventListener('click', () => {
+      if (confirm(`確定要隱藏（清除）「${u.name}」目前所有進行中的計時器嗎？`)) {
+        socket.emit('adminHideUserTimers', { nickname: u.name });
+      }
+    });
+    row.appendChild(hideBtn);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '移除';
+    removeBtn.className = 'danger';
+    removeBtn.title = '將此人移出網站';
+    removeBtn.addEventListener('click', () => {
+      if (confirm(`確定要將「${u.name}」移除出網站嗎？此暱稱之後將無法再使用。`)) {
+        socket.emit('adminRemoveUser', { targetSocketId: u.id, nickname: u.name });
+      }
+    });
+    row.appendChild(removeBtn);
+
     adminUserList.appendChild(row);
   });
 }
@@ -205,6 +260,48 @@ socket.on('channelAlert', ({ tabId, channelIndex }) => {
   }
   playBeep();
 });
+
+// ---------- Activity log (persistent) ----------
+socket.on('log:init', (entries) => {
+  logListEl.innerHTML = '';
+  if (!entries || entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'status-empty';
+    empty.textContent = '尚無任何操作紀錄';
+    logListEl.appendChild(empty);
+    return;
+  }
+  entries.forEach((e) => logListEl.appendChild(buildLogRow(e)));
+});
+
+socket.on('log:new', (entry) => {
+  const empty = logListEl.querySelector('.status-empty');
+  if (empty) empty.remove();
+  logListEl.insertBefore(buildLogRow(entry), logListEl.firstChild);
+});
+
+function buildLogRow(entry) {
+  const row = document.createElement('div');
+  row.className = 'log-row' + (entry.type === 'admin' ? ' admin' : '');
+
+  const time = document.createElement('span');
+  time.className = 'log-time';
+  time.textContent = formatDateTime(entry.time);
+  row.appendChild(time);
+
+  const msg = document.createElement('span');
+  msg.className = 'log-message';
+  msg.textContent = entry.message;
+  row.appendChild(msg);
+
+  return row;
+}
+
+function formatDateTime(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 
 // ---------- Tabs ----------
 function renderTabs() {
@@ -390,7 +487,7 @@ function updateGridDisplay() {
     const maxMs = (ch.customMax ?? tab.maxMinutes) * 60000;
     const elapsed = now - ch.startTime;
 
-    whoEl.textContent = ch.startedBy ? `👤 ${ch.startedBy}` : '';
+    whoEl.textContent = ch.startedBy ? `👤${ch.startedBy}` : '';
 
     if (ch.state === 'counting') {
       btn.classList.add('counting');
@@ -465,7 +562,7 @@ function renderStatusPanel() {
 
     const whoSpan = document.createElement('span');
     whoSpan.className = 'status-who';
-    whoSpan.textContent = `👤 ${r.who}`;
+    whoSpan.textContent = `👤${r.who}`;
     row.appendChild(whoSpan);
 
     const stateSpan = document.createElement('span');
