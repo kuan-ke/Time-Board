@@ -402,6 +402,40 @@ body {
   flex-shrink: 0;
 }
 
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+.panel-title-row .panel-title { margin-bottom: 0; }
+.panel-title-row .admin-btn { font-size: 11px; padding: 3px 8px; }
+
+.tab-lock {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.range-panel input[type="number"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.log-del-btn {
+  display: none;
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 3px;
+  flex-shrink: 0;
+}
+.log-del-btn:hover { color: var(--danger); }
+body.is-admin .log-del-btn { display: inline-block; }
+
 .scrollable {
   overflow-y: auto;
   min-height: 0;
@@ -440,7 +474,7 @@ body {
 
 .log-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   font-size: 12px;
   padding: 3px 6px;
