@@ -42,7 +42,7 @@ function createChannel() {
   };
 }
 
-function createTab(name, minMinutes, maxMinutes, image) {
+function createTab(name, minMinutes, maxMinutes, image, locked) {
   const id = nextTabId++;
   return {
     id,
@@ -50,12 +50,13 @@ function createTab(name, minMinutes, maxMinutes, image) {
     minMinutes: minMinutes || 45,
     maxMinutes: maxMinutes || 60,
     image: image || null,
+    locked: !!locked, // 鎖定的分頁：無法刪除、無法修改最小值/最大值
     channels: Array.from({ length: CHANNEL_COUNT }, createChannel)
   };
 }
 
-// 啟動時建立 9 個預設王的分頁
-let tabs = BOSS_PRESETS.map((b) => createTab(b.name, b.min, b.max, b.image));
+// 啟動時建立 9 個預設王的分頁（固定鎖定，不可刪除、不可改時間範圍）
+let tabs = BOSS_PRESETS.map((b) => createTab(b.name, b.min, b.max, b.image, true));
 
 // 目前連線中的使用者：socket.id -> nickname
 const connectedUsers = new Map();
@@ -217,13 +218,33 @@ io.on('connection', (socket) => {
     addLog(`管理者將「${nickname}」移除出網站`, 'admin');
   });
 
+  // 管理者刪除單筆操作紀錄
+  socket.on('adminDeleteLogEntry', (logId) => {
+    if (!socket.data.isAdmin) return;
+    const idx = activityLog.findIndex((e) => e.id === logId);
+    if (idx !== -1) {
+      activityLog.splice(idx, 1);
+      io.emit('log:remove', logId);
+    }
+  });
+
+  // 管理者清空全部操作紀錄
+  socket.on('adminClearLog', () => {
+    if (!socket.data.isAdmin) return;
+    activityLog = [];
+    io.emit('log:clear');
+    addLog('管理者清空了所有操作紀錄', 'admin');
+  });
+
   // ---------- 分頁 ----------
   socket.on('addTab', (name) => {
-    tabs.push(createTab(name, 45, 60, null));
+    tabs.push(createTab(name, 45, 60, null, false));
     broadcastState();
   });
 
   socket.on('removeTab', (tabId) => {
+    const tab = findTab(tabId);
+    if (!tab || tab.locked) return; // 鎖定的分頁不可刪除
     if (tabs.length <= 1) return;
     tabs = tabs.filter((t) => t.id !== tabId);
     broadcastState();
@@ -239,7 +260,7 @@ io.on('connection', (socket) => {
 
   socket.on('updateTabRange', ({ tabId, minMinutes, maxMinutes }) => {
     const tab = findTab(tabId);
-    if (!tab) return;
+    if (!tab || tab.locked) return; // 鎖定的分頁不可修改最小值/最大值
     const min = Number(minMinutes);
     const max = Number(maxMinutes);
     if (Number.isFinite(min) && min > 0) tab.minMinutes = min;
@@ -274,8 +295,9 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // ---------- CH 右鍵：設定自訂 min/max。若目前是 idle，設定完會直接開始倒數 ----------
-  socket.on('channelSetCustom', ({ tabId, channelIndex, customMin, customMax }) => {
+  // ---------- CH 右鍵：輸入一個精確的時刻（例如 22:30），開始倒數到那個時間點 ----------
+  // targetTime 為 "HH:MM" 字串；傳 null 代表還原為分頁預設時間
+  socket.on('channelSetCustom', ({ tabId, channelIndex, targetTime }) => {
     const nickname = socket.data.nickname;
     if (!nickname) {
       socket.emit('error:needNickname');
@@ -286,19 +308,40 @@ io.on('connection', (socket) => {
     const ch = tab.channels[channelIndex];
     if (!ch) return;
 
-    ch.customMin = (customMin === null || customMin === '') ? null : Number(customMin);
-    ch.customMax = (customMax === null || customMax === '') ? null : Number(customMax);
+    if (targetTime === null || targetTime === '') {
+      ch.customMin = null;
+      ch.customMax = null;
+      addLog(`${nickname} 將「${tab.name}」CH${channelIndex + 1} 的自訂時間還原為分頁預設`, 'update');
+      broadcastState();
+      return;
+    }
+
+    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(targetTime).trim());
+    if (!match) return;
+    const hh = Number(match[1]);
+    const mm = Number(match[2]);
+
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+    if (target.getTime() <= now.getTime()) {
+      target.setDate(target.getDate() + 1); // 該時刻已經過了 -> 視為明天這個時間
+    }
+
+    const diffMin = (target.getTime() - now.getTime()) / 60000;
+    const gapMin = Math.max(0, tab.maxMinutes - tab.minMinutes); // 維持與分頁預設相同的「提醒→重置」間隔
+
+    ch.customMin = diffMin;
+    ch.customMax = diffMin + gapMin;
+
+    const timeLabel = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 
     if (ch.state === 'idle') {
       ch.state = 'counting';
       ch.startTime = Date.now();
       ch.startedBy = nickname;
-      addLog(
-        `${nickname} 設定「${tab.name}」CH${channelIndex + 1} 自訂時間（${ch.customMin ?? tab.minMinutes}~${ch.customMax ?? tab.maxMinutes} 分）並開始倒數`,
-        'start'
-      );
+      addLog(`${nickname} 設定「${tab.name}」CH${channelIndex + 1} 倒數至 ${timeLabel}，並開始倒數`, 'start');
     } else {
-      addLog(`${nickname} 更新了「${tab.name}」CH${channelIndex + 1} 的自訂時間設定`, 'update');
+      addLog(`${nickname} 更新了「${tab.name}」CH${channelIndex + 1} 的目標時間為 ${timeLabel}`, 'update');
     }
     broadcastState();
   });
