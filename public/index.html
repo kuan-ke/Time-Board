@@ -42,7 +42,7 @@
     <div class="range-panel">
       <label>最小值(分)<input type="number" id="minInput" min="1" /></label>
       <label>最大值(分)<input type="number" id="maxInput" min="1" /></label>
-      <span class="range-hint">CH 可右鍵自訂覆蓋</span>
+      <span class="range-hint" id="rangeHint">CH 可右鍵自訂覆蓋</span>
     </div>
     <div class="legend">
       <span class="legend-item"><span class="dot idle"></span>待機</span>
@@ -61,7 +61,10 @@
       </div>
     </div>
     <div class="panel log-panel">
-      <div class="panel-title">🗂 操作紀錄（永久保留，不會被清除）</div>
+      <div class="panel-title-row">
+        <div class="panel-title">🗂 操作紀錄</div>
+        <button id="adminClearLogBtn" class="admin-btn hidden" title="清空全部操作紀錄">清空紀錄</button>
+      </div>
       <div id="logList" class="log-list scrollable">
         <div class="status-empty">尚無任何操作紀錄</div>
       </div>
@@ -87,11 +90,8 @@
 <div id="modalOverlay" class="modal-overlay hidden">
   <div class="modal">
     <h3 id="modalTitle">設定 CH 倒數時間</h3>
-    <label>最小值（分鐘）
-      <input type="number" id="modalMin" min="1" />
-    </label>
-    <label>最大值（分鐘）
-      <input type="number" id="modalMax" min="1" />
+    <label>目標時刻
+      <input type="time" id="modalTargetTime" />
     </label>
     <p class="modal-note" id="modalStateNote"></p>
     <div class="modal-buttons">
