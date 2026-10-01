@@ -660,7 +660,7 @@ function openModal(tab, channelIndex) {
   modalHour.value = now.getHours();
   modalMinute.value = now.getMinutes();
 
-  modalStateNote.textContent = '請輸入王被擊殺的時間（24 小時制，例如 23 點 50 分）。若輸入的時間比現在晚，會自動視為昨天的這個時間，因為死亡時間一定是過去式。儲存後會以此時間重新計算倒數，並覆蓋此 CH 目前的狀態。';
+  modalStateNote.textContent = '請輸入王被擊殺的時間（24 小時制，例如 23 點 50 分）';
 
   modalOverlay.classList.remove('hidden');
 }
