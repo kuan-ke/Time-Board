@@ -295,9 +295,11 @@ io.on('connection', (socket) => {
     broadcastState();
   });
 
-  // ---------- CH 右鍵：輸入王的「死亡時間」（例如 23:50），從那個過去的時刻開始倒數 ----------
-  // deathTime 為 "HH:MM" 字串；傳 null 代表清除、恢復待機
-  socket.on('channelSetCustom', ({ tabId, channelIndex, deathTime }) => {
+  // ---------- CH 右鍵：輸入王的「死亡時間」，從那個過去的時刻開始倒數 ----------
+  // deathTimeEpoch：由前端（瀏覽器本地時區）算好的絕對時間戳記（毫秒），避免伺服器與使用者時區不同造成誤差
+  // deathTimeLabel：純粹給操作紀錄顯示用的「HH:MM」文字
+  // 傳 deathTimeEpoch = null 代表清除、恢復待機
+  socket.on('channelSetCustom', ({ tabId, channelIndex, deathTimeEpoch, deathTimeLabel }) => {
     const nickname = socket.data.nickname;
     if (!nickname) {
       socket.emit('error:needNickname');
@@ -308,7 +310,7 @@ io.on('connection', (socket) => {
     const ch = tab.channels[channelIndex];
     if (!ch) return;
 
-    if (deathTime === null || deathTime === '') {
+    if (deathTimeEpoch === null || deathTimeEpoch === undefined) {
       const wasActive = ch.state !== 'idle';
       ch.state = 'idle';
       ch.startTime = null;
@@ -322,26 +324,24 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(deathTime).trim());
-    if (!match) return;
-    const hh = Number(match[1]);
-    const mm = Number(match[2]);
+    let deathMs = Number(deathTimeEpoch);
+    if (!Number.isFinite(deathMs)) return;
 
-    const now = new Date();
-    const death = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
-    if (death.getTime() > now.getTime()) {
-      death.setDate(death.getDate() - 1); // 該時刻還沒到 -> 視為昨天（死亡時間一定是過去式）
+    const now = Date.now();
+    if (deathMs > now) {
+      // 防呆：死亡時間不應該在未來（理論上前端已經處理過，這裡再保險一次）
+      deathMs -= 24 * 60 * 60 * 1000;
     }
 
     // 死亡時間直接當作起算點，之後照分頁的最小值/最大值自動計算提醒與重置
     ch.customMin = null;
     ch.customMax = null;
     ch.state = 'counting';
-    ch.startTime = death.getTime();
+    ch.startTime = deathMs;
     ch.startedBy = nickname;
 
-    const timeLabel = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-    addLog(`${nickname} 回報「${tab.name}」CH${channelIndex + 1} 的死亡時間為 ${timeLabel}，開始倒數`, 'start');
+    const label = deathTimeLabel || '';
+    addLog(`${nickname} 回報「${tab.name}」CH${channelIndex + 1} 的死亡時間為 ${label}，開始倒數`, 'start');
     broadcastState();
   });
 
