@@ -29,55 +29,61 @@
     <div id="adminUserList" class="admin-user-list"></div>
   </div>
 
-  <div class="tabs-row">
-    <div id="tabsList" class="tabs-list"></div>
-    <button id="addTabBtn" class="add-tab-btn" title="新增分頁">＋</button>
-  </div>
+  <div class="main-row">
+    <div class="main-left">
+      <div class="tabs-row">
+        <div id="tabsList" class="tabs-list"></div>
+        <button id="addTabBtn" class="add-tab-btn" title="新增分頁">＋</button>
+      </div>
 
-  <div class="boss-range-row">
-    <div class="boss-info">
-      <img id="bossImage" class="boss-image hidden" alt="" />
-      <div id="bossName" class="boss-name"></div>
-    </div>
-    <div class="range-panel">
-      <label>最小值(分)<input type="number" id="minInput" min="1" /></label>
-      <label>最大值(分)<input type="number" id="maxInput" min="1" /></label>
-      <span class="range-hint" id="rangeHint">CH 可右鍵自訂覆蓋</span>
-    </div>
-    <div class="legend">
-      <span class="legend-item"><span class="dot idle"></span>待機</span>
-      <span class="legend-item"><span class="dot counting"></span>倒數中</span>
-      <span class="legend-item"><span class="dot appearing"></span>出現中</span>
-    </div>
-  </div>
-
-  <div id="grid" class="grid"></div>
-
-  <div class="bottom-row">
-    <div class="panel active-panel">
-      <div class="panel-title">📋 進行中頻道（即時，結束後自動消失）</div>
-      <div class="active-columns">
-        <div class="active-sub-panel">
-          <div class="sub-panel-title">⏳ 倒數中</div>
-          <div id="statusListCounting" class="status-list scrollable">
-            <div class="status-empty">目前沒有倒數中的 CH</div>
-          </div>
+      <div class="boss-range-row">
+        <div class="boss-info">
+          <img id="bossImage" class="boss-image hidden" alt="" />
+          <div id="bossName" class="boss-name"></div>
         </div>
-        <div class="active-sub-panel">
-          <div class="sub-panel-title">🌟 出現中</div>
-          <div id="statusListAppearing" class="status-list scrollable">
-            <div class="status-empty">目前沒有出現中的 CH</div>
+        <div class="range-panel">
+          <label>最小值(分)<input type="number" id="minInput" min="1" /></label>
+          <label>最大值(分)<input type="number" id="maxInput" min="1" /></label>
+          <span class="range-hint" id="rangeHint">CH 可右鍵自訂覆蓋</span>
+        </div>
+        <div class="legend">
+          <span class="legend-item"><span class="dot idle"></span>待機</span>
+          <span class="legend-item"><span class="dot counting"></span>倒數中</span>
+          <span class="legend-item"><span class="dot appearing"></span>出現中</span>
+        </div>
+      </div>
+
+      <div class="grid-wrapper">
+        <div id="grid" class="grid"></div>
+      </div>
+    </div>
+
+    <div class="main-right">
+      <div class="panel active-panel">
+        <div class="panel-title">📋 進行中頻道（即時，結束後自動消失）</div>
+        <div class="active-columns">
+          <div class="active-sub-panel">
+            <div class="sub-panel-title">⏳ 倒數中</div>
+            <div id="statusListCounting" class="status-list scrollable">
+              <div class="status-empty">目前沒有倒數中的 CH</div>
+            </div>
+          </div>
+          <div class="active-sub-panel">
+            <div class="sub-panel-title">🌟 出現中</div>
+            <div id="statusListAppearing" class="status-list scrollable">
+              <div class="status-empty">目前沒有出現中的 CH</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    <div class="panel log-panel">
-      <div class="panel-title-row">
-        <div class="panel-title">🗂 操作紀錄</div>
-        <button id="adminClearLogBtn" class="admin-btn hidden" title="清空全部操作紀錄">清空紀錄</button>
-      </div>
-      <div id="logList" class="log-list scrollable">
-        <div class="status-empty">尚無任何操作紀錄</div>
+      <div class="panel log-panel">
+        <div class="panel-title-row">
+          <div class="panel-title">🗂 操作紀錄</div>
+          <button id="adminClearLogBtn" class="admin-btn hidden" title="清空全部操作紀錄">清空紀錄</button>
+        </div>
+        <div id="logList" class="log-list scrollable">
+          <div class="status-empty">尚無任何操作紀錄</div>
+        </div>
       </div>
     </div>
   </div>
