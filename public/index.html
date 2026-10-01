@@ -56,8 +56,19 @@
   <div class="bottom-row">
     <div class="panel active-panel">
       <div class="panel-title">📋 進行中頻道（即時，結束後自動消失）</div>
-      <div id="statusList" class="status-list scrollable">
-        <div class="status-empty">目前沒有任何 CH 在倒數中</div>
+      <div class="active-columns">
+        <div class="active-sub-panel">
+          <div class="sub-panel-title">⏳ 倒數中</div>
+          <div id="statusListCounting" class="status-list scrollable">
+            <div class="status-empty">目前沒有倒數中的 CH</div>
+          </div>
+        </div>
+        <div class="active-sub-panel">
+          <div class="sub-panel-title">🌟 出現中</div>
+          <div id="statusListAppearing" class="status-list scrollable">
+            <div class="status-empty">目前沒有出現中的 CH</div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="panel log-panel">
@@ -90,9 +101,18 @@
 <div id="modalOverlay" class="modal-overlay hidden">
   <div class="modal">
     <h3 id="modalTitle">回報 CH 死亡時間</h3>
-    <label>死亡時間
-      <input type="time" id="modalTargetTime" />
-    </label>
+    <div class="time-input-row">
+      <label class="time-input-label">
+        時
+        <input type="number" id="modalHour" min="0" max="23" />
+      </label>
+      <span class="time-colon">:</span>
+      <label class="time-input-label">
+        分
+        <input type="number" id="modalMinute" min="0" max="59" />
+      </label>
+      <span class="time-24h-hint">（24小時制）</span>
+    </div>
     <p class="modal-note" id="modalStateNote"></p>
     <div class="modal-buttons">
       <button id="modalResetBtn" class="btn-secondary">恢復待機</button>
