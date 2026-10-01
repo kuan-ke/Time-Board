@@ -175,17 +175,16 @@ body {
 /* ---------- Tabs ---------- */
 .tabs-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   flex-shrink: 0;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  flex-wrap: wrap;
 }
 
 .tabs-list {
   display: flex;
   gap: 5px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .tab-item {
@@ -256,8 +255,8 @@ body {
   gap: 8px;
 }
 .boss-image {
-  width: 30px;
-  height: 30px;
+  width: 60px;
+  height: 60px;
   object-fit: contain;
   image-rendering: pixelated;
   background: #0f172a;
@@ -351,13 +350,11 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 54px));
-  grid-template-rows: repeat(6, minmax(0, 54px));
-  gap: 5px;
+  grid-template-columns: repeat(10, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  gap: 6px;
   width: 100%;
   height: 100%;
-  justify-content: center;
-  align-content: center;
 }
 
 .ch-btn {
