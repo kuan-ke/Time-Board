@@ -21,7 +21,9 @@ const maxInput = document.getElementById('maxInput');
 const gridEl = document.getElementById('grid');
 const bossImageEl = document.getElementById('bossImage');
 const bossNameEl = document.getElementById('bossName');
-const statusListEl = document.getElementById('statusList');
+const statusListCountingEl = document.getElementById('statusListCounting');
+const statusListAppearingEl = document.getElementById('statusListAppearing');
+const SOON_THRESHOLD_MS = 5 * 60 * 1000; // 5 分鐘內視為「即將出現」
 const logListEl = document.getElementById('logList');
 
 const onlineCountEl = document.getElementById('onlineCount');
@@ -38,7 +40,8 @@ const nicknameSubmitBtn = document.getElementById('nicknameSubmitBtn');
 const nicknameError = document.getElementById('nicknameError');
 
 const modalOverlay = document.getElementById('modalOverlay');
-const modalTargetTime = document.getElementById('modalTargetTime');
+const modalHour = document.getElementById('modalHour');
+const modalMinute = document.getElementById('modalMinute');
 const modalTitle = document.getElementById('modalTitle');
 const modalStateNote = document.getElementById('modalStateNote');
 const modalResetBtn = document.getElementById('modalResetBtn');
@@ -555,43 +558,58 @@ function formatMs(ms) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// ---------- Status panel (all tabs, all active channels) ----------
+// ---------- Status panel (all tabs, split into 倒數中 / 出現中) ----------
 function renderStatusPanel() {
   const now = Date.now() + clockOffset;
-  const rows = [];
+  const countingRows = [];
+  const appearingRows = [];
 
   tabs.forEach((tab) => {
     tab.channels.forEach((ch, idx) => {
       if (ch.state === 'idle' || ch.startTime === null) return;
       const minMs = (ch.customMin ?? tab.minMinutes) * 60000;
       const maxMs = (ch.customMax ?? tab.maxMinutes) * 60000;
-      const elapsed = now - ch.startTime;
-      const remainingMs = ch.state === 'counting' ? (minMs - elapsed) : (maxMs - elapsed);
-      rows.push({
+
+      const base = {
         tabId: tab.id,
         tabName: tab.name,
         channelIndex: idx,
-        who: ch.startedBy || '未知',
-        state: ch.state,
-        remainingMs: Math.max(0, remainingMs)
-      });
+        who: ch.startedBy || '未知'
+      };
+
+      if (ch.state === 'counting') {
+        const remainingMs = Math.max(0, minMs - (now - ch.startTime));
+        countingRows.push({ ...base, remainingMs, soon: remainingMs <= SOON_THRESHOLD_MS });
+      } else if (ch.state === 'appearing') {
+        const becameAppearingAt = ch.startTime + minMs; // 這個頻道「變成出現中」的時間點
+        const remainingMs = Math.max(0, maxMs - (now - ch.startTime));
+        appearingRows.push({ ...base, remainingMs, becameAppearingAt });
+      }
     });
   });
 
-  rows.sort((a, b) => a.remainingMs - b.remainingMs);
+  // 倒數中：最接近變成出現中的排最上面
+  countingRows.sort((a, b) => a.remainingMs - b.remainingMs);
+  // 出現中：最早變成出現中的排最上面
+  appearingRows.sort((a, b) => a.becameAppearingAt - b.becameAppearingAt);
 
-  statusListEl.innerHTML = '';
+  renderStatusColumn(statusListCountingEl, countingRows, 'counting', '目前沒有倒數中的 CH');
+  renderStatusColumn(statusListAppearingEl, appearingRows, 'appearing', '目前沒有出現中的 CH');
+}
+
+function renderStatusColumn(container, rows, state, emptyText) {
+  container.innerHTML = '';
   if (rows.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'status-empty';
-    empty.textContent = '目前沒有任何 CH 在倒數中';
-    statusListEl.appendChild(empty);
+    empty.textContent = emptyText;
+    container.appendChild(empty);
     return;
   }
 
   rows.forEach((r) => {
     const row = document.createElement('div');
-    row.className = 'status-row';
+    row.className = 'status-row' + (r.soon ? ' soon' : '');
 
     const tag = document.createElement('span');
     tag.className = 'status-tag';
@@ -608,10 +626,12 @@ function renderStatusPanel() {
     whoSpan.textContent = `👤${r.who}`;
     row.appendChild(whoSpan);
 
-    const stateSpan = document.createElement('span');
-    stateSpan.className = 'status-state ' + r.state;
-    stateSpan.textContent = r.state === 'counting' ? '倒數中' : '出現中';
-    row.appendChild(stateSpan);
+    if (r.soon) {
+      const soonTag = document.createElement('span');
+      soonTag.className = 'status-soon-tag';
+      soonTag.textContent = '⚠即將出現';
+      row.appendChild(soonTag);
+    }
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'status-time';
@@ -626,7 +646,7 @@ function renderStatusPanel() {
       renderGrid();
     });
 
-    statusListEl.appendChild(row);
+    container.appendChild(row);
   });
 }
 
@@ -635,23 +655,20 @@ setInterval(() => {
   renderStatusPanel();
 }, 1000);
 
-// ---------- Modal (右鍵：回報死亡時間) ----------
+// ---------- Modal (右鍵：回報死亡時間，手動輸入時/分，24 小時制) ----------
 function pad2(n) { return String(n).padStart(2, '0'); }
-
-function nowHHMM() {
-  const t = new Date(Date.now() + clockOffset);
-  return `${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
-}
 
 function openModal(tab, channelIndex) {
   const ch = tab.channels[channelIndex];
   modalContext = { tabId: tab.id, channelIndex };
   modalTitle.textContent = `回報 CH${channelIndex + 1} 死亡時間`;
 
-  // 預設帶入「現在」，代表王剛剛才死
-  modalTargetTime.value = nowHHMM();
+  // 預設帶入「現在」（使用者裝置的本地時間），代表王剛剛才死
+  const now = new Date(Date.now() + clockOffset);
+  modalHour.value = now.getHours();
+  modalMinute.value = now.getMinutes();
 
-  modalStateNote.textContent = '請輸入王被擊殺的時間（例如 23:50）。若輸入的時間比現在晚，會自動視為昨天的這個時間，因為死亡時間一定是過去式。儲存後會以此時間重新計算倒數，並覆蓋此 CH 目前的狀態。';
+  modalStateNote.textContent = '請輸入王被擊殺的時間（24 小時制，例如 23 點 50 分）。若輸入的時間比現在晚，會自動視為昨天的這個時間，因為死亡時間一定是過去式。儲存後會以此時間重新計算倒數，並覆蓋此 CH 目前的狀態。';
 
   modalOverlay.classList.remove('hidden');
 }
@@ -665,14 +682,26 @@ modalCancelBtn.addEventListener('click', closeModal);
 
 modalSaveBtn.addEventListener('click', () => {
   if (!modalContext) return;
-  if (!modalTargetTime.value) {
-    modalTargetTime.focus();
+
+  const hh = Number(modalHour.value);
+  const mm = Number(modalMinute.value);
+  if (!Number.isInteger(hh) || hh < 0 || hh > 23 || !Number.isInteger(mm) || mm < 0 || mm > 59) {
+    alert('請輸入正確的時間（時：0~23，分：0~59）');
     return;
   }
+
+  // 在使用者自己的瀏覽器本地時區計算絕對時間戳記，避免伺服器與使用者時區不同造成誤差
+  const nowLocal = new Date();
+  const death = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate(), hh, mm, 0, 0);
+  if (death.getTime() > nowLocal.getTime()) {
+    death.setDate(death.getDate() - 1); // 該時刻還沒到 -> 視為昨天（死亡時間一定是過去式）
+  }
+
   socket.emit('channelSetCustom', {
     tabId: modalContext.tabId,
     channelIndex: modalContext.channelIndex,
-    deathTime: modalTargetTime.value
+    deathTimeEpoch: death.getTime(),
+    deathTimeLabel: `${pad2(hh)}:${pad2(mm)}`
   });
   closeModal();
 });
@@ -682,7 +711,7 @@ modalResetBtn.addEventListener('click', () => {
   socket.emit('channelSetCustom', {
     tabId: modalContext.tabId,
     channelIndex: modalContext.channelIndex,
-    deathTime: null
+    deathTimeEpoch: null
   });
   closeModal();
 });
@@ -700,7 +729,7 @@ function playBeep() {
     const gain = audioCtx.createGain();
     osc.type = 'sine';
     osc.frequency.value = 880;
-    gain.gain.value = 0.15;
+    gain.gain.value = 0.045; // 原本 0.15 的 30%
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start();
