@@ -468,12 +468,8 @@ function renderGrid() {
 
     const label = document.createElement('div');
     label.className = 'ch-label';
-    label.textContent = `CH${i + 1}`;
+    label.textContent = `ch. ${i + 1}`;
     btn.appendChild(label);
-
-    const sub = document.createElement('div');
-    sub.className = 'ch-sub';
-    btn.appendChild(sub);
 
     const timerEl = document.createElement('div');
     timerEl.className = 'ch-timer';
@@ -516,14 +512,12 @@ function updateGridDisplay() {
   tab.channels.forEach((ch, i) => {
     const btn = gridEl.querySelector(`[data-idx="${i}"]`);
     if (!btn) return;
-    const sub = btn.querySelector('.ch-sub');
     const timerEl = btn.querySelector('.ch-timer');
     const whoEl = btn.querySelector('.ch-who');
 
     btn.classList.remove('counting', 'appearing');
 
     if (ch.state === 'idle' || ch.startTime === null) {
-      sub.textContent = '';
       timerEl.textContent = '';
       whoEl.textContent = '';
       return;
@@ -537,11 +531,9 @@ function updateGridDisplay() {
 
     if (ch.state === 'counting') {
       btn.classList.add('counting');
-      sub.textContent = '倒數提醒';
       timerEl.textContent = formatMs(Math.max(0, minMs - elapsed));
     } else if (ch.state === 'appearing') {
       btn.classList.add('appearing');
-      sub.textContent = '出現中';
       timerEl.textContent = formatMs(Math.max(0, maxMs - elapsed));
     }
   });
