@@ -122,7 +122,9 @@ function submitNickname() {
     nicknameInput.focus();
     return;
   }
-  if (!pw) {
+  if (!/^[A-Za-z0-9]{6}$/.test(pw)) {
+    nicknameError.textContent = '房間密碼必須剛好 6 個字元，只能使用英文大小寫或數字';
+    nicknameError.classList.remove('hidden');
     roomPasswordInput.focus();
     return;
   }
@@ -143,6 +145,11 @@ nicknameInput.addEventListener('keydown', (e) => {
 });
 roomPasswordInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') submitNickname();
+});
+// 輸入時自動濾掉英數字以外的字元（含空白、中文、符號），最多 6 碼
+roomPasswordInput.addEventListener('input', () => {
+  const cleaned = roomPasswordInput.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 6);
+  if (cleaned !== roomPasswordInput.value) roomPasswordInput.value = cleaned;
 });
 togglePasswordBtn.addEventListener('click', () => {
   const show = roomPasswordInput.type === 'password';
@@ -186,11 +193,21 @@ socket.on('join:ack', ({ nickname, created }) => {
   updateNicknameDisplay();
   updateRoomDisplay();
   hideNicknameOverlay();
+  adminSwitchFrom = null;
+  if (isAdmin) renderAdminRoomList();
   if (manualJoinPending) showToast(created ? '已建立新房間，把密碼分享給隊友就能一起使用' : '已進入房間');
   manualJoinPending = false;
 });
 
 socket.on('join:error', ({ field, code, message }) => {
+  // 管理者從「所有房間」切換失敗（例如暱稱在那間已被使用）：留在原本的房間，只顯示提示
+  if (adminSwitchFrom !== null) {
+    myRoomPassword = adminSwitchFrom;
+    adminSwitchFrom = null;
+    manualJoinPending = false;
+    showToast('無法進入該房間：' + message);
+    return;
+  }
   joined = false;
   manualJoinPending = false;
   updateRoomDisplay();
@@ -258,6 +275,7 @@ socket.on('adminAuth:result', (ok) => {
     adminClearLogBtn.classList.remove('hidden');
     renderAdminUserList();
     renderAdminMutedList();
+    renderAdminRoomList();
   } else {
     alert('管理者密鑰錯誤');
   }
@@ -339,6 +357,68 @@ function renderAdminUserList() {
 
     adminUserList.appendChild(row);
   });
+}
+
+// ---------- 管理者：所有房間列表（可一鍵進入任一房間） ----------
+const adminRoomList = document.getElementById('adminRoomList');
+const adminRoomCount = document.getElementById('adminRoomCount');
+let adminRooms = [];
+let adminSwitchFrom = null; // 管理者切換房間前所在的房間密碼（切換失敗時用來還原）
+
+socket.on('admin:rooms', (list) => {
+  adminRooms = list || [];
+  if (isAdmin) renderAdminRoomList();
+});
+
+function renderAdminRoomList() {
+  adminRoomCount.textContent = adminRooms.length;
+  adminRoomList.innerHTML = '';
+  if (adminRooms.length === 0) {
+    adminRoomList.innerHTML = '<span style="color:#64748b;">目前沒有任何房間</span>';
+    return;
+  }
+  adminRooms.forEach((r) => {
+    const isCurrent = joined && r.password === myRoomPassword;
+    const row = document.createElement('div');
+    row.className = 'admin-user-row admin-room-row' + (isCurrent ? ' current' : '');
+    row.title = r.users.length ? `線上：${r.users.join('、')}` : '目前沒有人在線';
+
+    const pw = document.createElement('span');
+    pw.className = 'r-pw';
+    pw.textContent = r.password;
+    row.appendChild(pw);
+
+    const meta = document.createElement('span');
+    meta.className = 'r-meta';
+    meta.textContent = `👥${r.users.length} ⏳${r.activeCount}`;
+    row.appendChild(meta);
+
+    if (isCurrent) {
+      const here = document.createElement('span');
+      here.className = 'r-meta';
+      here.textContent = '（目前所在）';
+      row.appendChild(here);
+    } else {
+      const goBtn = document.createElement('button');
+      goBtn.textContent = '進入';
+      goBtn.title = '切換到這個房間';
+      goBtn.addEventListener('click', () => adminJoinRoom(r.password));
+      row.appendChild(goBtn);
+    }
+    adminRoomList.appendChild(row);
+  });
+}
+
+function adminJoinRoom(password) {
+  if (!myNickname) {
+    myRoomPassword = password;
+    showNicknameOverlay();
+    return;
+  }
+  adminSwitchFrom = joined ? myRoomPassword : null;
+  myRoomPassword = password;
+  manualJoinPending = true;
+  socket.emit('joinRoom', { nickname: myNickname, password });
 }
 
 socket.on('admin:mutedList', (list) => {
