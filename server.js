@@ -38,7 +38,8 @@ function createChannel() {
     startTime: null,    // server epoch ms
     customMin: null,    // null = 使用分頁預設值
     customMax: null,
-    startedBy: null      // 是誰觸發這次倒數的暱稱
+    startedBy: null,     // 是誰觸發這次倒數的暱稱
+    hiddenByAdmin: false // true：管理者隱藏了這一輪倒數（不廣播給任何人看，但伺服器內部繼續計算）
   };
 }
 
@@ -81,13 +82,58 @@ function isNicknameTaken(name, excludeSocketId) {
   return false;
 }
 
+// 給「一般畫面」看的版本：被管理者隱藏的頻道，一律顯示成待機（空的），
+// 但伺服器內部的 tabs 資料本身不變，倒數邏輯照常在背後執行。
+function buildPublicTabs() {
+  return tabs.map((tab) => ({
+    ...tab,
+    channels: tab.channels.map((ch) => {
+      if (!ch.hiddenByAdmin) return ch;
+      return {
+        state: 'idle',
+        startTime: null,
+        customMin: null,
+        customMax: null,
+        startedBy: null,
+        hiddenByAdmin: false
+      };
+    })
+  }));
+}
+
 function broadcastState() {
-  io.emit('state:update', { tabs, serverTime: Date.now() });
+  io.emit('state:update', { tabs: buildPublicTabs(), serverTime: Date.now() });
 }
 
 function broadcastUsers() {
   const list = Array.from(connectedUsers.entries()).map(([id, name]) => ({ id, name }));
   io.emit('users:update', list);
+}
+
+// 目前所有被隱藏的頻道清單（只給管理者看，讓管理者可以之後取消隱藏）
+function getHiddenChannelsInfo() {
+  const result = [];
+  tabs.forEach((tab) => {
+    tab.channels.forEach((ch, idx) => {
+      if (ch.hiddenByAdmin) {
+        result.push({
+          tabId: tab.id,
+          tabName: tab.name,
+          channelIndex: idx,
+          startedBy: ch.startedBy,
+          state: ch.state
+        });
+      }
+    });
+  });
+  return result;
+}
+
+function broadcastAdminHiddenList() {
+  const info = getHiddenChannelsInfo();
+  for (const [, s] of io.sockets.sockets) {
+    if (s.data.isAdmin) s.emit('admin:hiddenList', info);
+  }
 }
 
 function addLog(message, type) {
@@ -106,6 +152,7 @@ function addLog(message, type) {
 function tick() {
   const now = Date.now();
   let changed = false;
+  let hiddenListChanged = false;
 
   for (const tab of tabs) {
     tab.channels.forEach((ch, idx) => {
@@ -119,16 +166,18 @@ function tick() {
         ch.state = 'idle';
         ch.startTime = null;
         ch.startedBy = null;
+        if (ch.hiddenByAdmin) { ch.hiddenByAdmin = false; hiddenListChanged = true; }
         changed = true;
       } else if (elapsed >= minMs && ch.state !== 'appearing') {
         ch.state = 'appearing';
         changed = true;
-        io.emit('channelAlert', { tabId: tab.id, channelIndex: idx });
+        if (!ch.hiddenByAdmin) io.emit('channelAlert', { tabId: tab.id, channelIndex: idx });
       }
     });
   }
 
   if (changed) broadcastState();
+  if (hiddenListChanged) broadcastAdminHiddenList();
 }
 
 setInterval(tick, 1000);
@@ -163,6 +212,7 @@ io.on('connection', (socket) => {
     const ok = typeof key === 'string' && key === ADMIN_KEY;
     socket.data.isAdmin = ok;
     socket.emit('adminAuth:result', ok);
+    if (ok) socket.emit('admin:hiddenList', getHiddenChannelsInfo());
   });
 
   // 管理者強制修改「目前仍連線中」某個使用者的暱稱
@@ -181,25 +231,39 @@ io.on('connection', (socket) => {
     addLog(`管理者將「${oldName}」的暱稱改為「${trimmed}」`, 'admin');
   });
 
-  // 管理者隱藏（清除）某位使用者目前所有進行中的計時器
+  // 管理者隱藏某位使用者目前所有進行中的頻道：
+  // 只是「不顯示給任何人看」，倒數本身在伺服器內部繼續正常跑，不會被清除或重置。
+  // 不影響其他使用者自己開的頻道（只針對這個人啟動的頻道生效）。
   socket.on('adminHideUserTimers', ({ nickname }) => {
     if (!socket.data.isAdmin) return;
     if (!nickname) return;
     let changed = false;
     tabs.forEach((tab) => {
       tab.channels.forEach((ch) => {
-        if (ch.startedBy === nickname && ch.state !== 'idle') {
-          ch.state = 'idle';
-          ch.startTime = null;
-          ch.startedBy = null;
+        if (ch.startedBy === nickname && ch.state !== 'idle' && !ch.hiddenByAdmin) {
+          ch.hiddenByAdmin = true;
           changed = true;
         }
       });
     });
     if (changed) {
       broadcastState();
-      addLog(`管理者隱藏了「${nickname}」目前所有進行中的計時器`, 'admin');
+      broadcastAdminHiddenList();
+      addLog(`管理者隱藏了「${nickname}」目前進行中的頻道（倒數仍在背景繼續，不會重置，其他人看不到）`, 'admin');
     }
+  });
+
+  // 管理者取消隱藏單一頻道
+  socket.on('adminUnhideChannel', ({ tabId, channelIndex }) => {
+    if (!socket.data.isAdmin) return;
+    const tab = findTab(tabId);
+    if (!tab) return;
+    const ch = tab.channels[channelIndex];
+    if (!ch || !ch.hiddenByAdmin) return;
+    ch.hiddenByAdmin = false;
+    broadcastState();
+    broadcastAdminHiddenList();
+    addLog(`管理者取消隱藏了「${tab.name}」CH${channelIndex + 1}`, 'admin');
   });
 
   // 管理者移除成員：中斷連線 + 禁用該暱稱
@@ -280,6 +344,7 @@ io.on('connection', (socket) => {
     if (!tab) return;
     const ch = tab.channels[channelIndex];
     if (!ch) return;
+    if (ch.hiddenByAdmin) return; // 被管理者隱藏中，畫面上看起來是空的，忽略一般使用者的點擊
 
     if (ch.state === 'idle') {
       ch.state = 'counting';
@@ -292,6 +357,28 @@ io.on('connection', (socket) => {
       ch.startedBy = null;
       addLog(`${nickname} 手動停止了「${tab.name}」CH${channelIndex + 1} 的倒數`, 'stop');
     }
+    broadcastState();
+  });
+
+  // ---------- 進行中頻道列表的「擊殺」按鈕：無論目前倒數中或出現中，立即重新開始倒數 ----------
+  socket.on('channelKillNow', ({ tabId, channelIndex }) => {
+    const nickname = socket.data.nickname;
+    if (!nickname) {
+      socket.emit('error:needNickname');
+      return;
+    }
+    const tab = findTab(tabId);
+    if (!tab) return;
+    const ch = tab.channels[channelIndex];
+    if (!ch) return;
+    if (ch.hiddenByAdmin) return;
+
+    ch.customMin = null;
+    ch.customMax = null;
+    ch.state = 'counting';
+    ch.startTime = Date.now();
+    ch.startedBy = nickname;
+    addLog(`${nickname} 擊殺了「${tab.name}」CH${channelIndex + 1}，重新開始倒數`, 'start');
     broadcastState();
   });
 
@@ -309,6 +396,7 @@ io.on('connection', (socket) => {
     if (!tab) return;
     const ch = tab.channels[channelIndex];
     if (!ch) return;
+    if (ch.hiddenByAdmin) return; // 被管理者隱藏中，忽略一般使用者的操作
 
     if (deathTimeEpoch === null || deathTimeEpoch === undefined) {
       const wasActive = ch.state !== 'idle';
