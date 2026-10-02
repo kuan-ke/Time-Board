@@ -52,83 +52,175 @@ const modalSaveBtn = document.getElementById('modalSaveBtn');
 const adminClearLogBtn = document.getElementById('adminClearLogBtn');
 const rangeHintEl = document.getElementById('rangeHint');
 
-// ---------- Nickname (mandatory, locked after set) ----------
+// ---------- 進入房間：暱稱 + 房間密碼 ----------
+// 暱稱設定後鎖定（無法自行更改）；房間密碼相同的人會進到同一個房間。
+// 兩者都存在 localStorage，重新整理或斷線重連時會自動回到原本的房間。
+const ROOM_KEY = 'ch_timer_room_password';
+const roomPasswordInput = document.getElementById('roomPasswordInput');
+const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+const roomDisplay = document.getElementById('roomDisplay');
+const roomPasswordText = document.getElementById('roomPasswordText');
+const switchRoomBtn = document.getElementById('switchRoomBtn');
+
+let myRoomPassword = null;
+let joined = false;
+let manualJoinPending = false; // 使用者手動按「進入房間」（用來決定要不要顯示「已建立 / 已進入」提示）
+let showRoomPassword = false;
+
+function storageGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function storageSet(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* ignore */ } }
+function storageRemove(key) { try { localStorage.removeItem(key); } catch (e) { /* ignore */ } }
+
 function initNickname() {
-  const saved = localStorage.getItem(NICKNAME_KEY);
-  if (saved) {
-    myNickname = saved;
-    hideNicknameOverlay();
-    socket.emit('setNickname', saved);
+  const savedName = storageGet(NICKNAME_KEY);
+  const savedPw = storageGet(ROOM_KEY);
+  if (savedName) myNickname = savedName;
+  if (savedPw) myRoomPassword = savedPw;
+
+  if (savedName && savedPw) {
+    hideNicknameOverlay(); // 連線後會自動進入原本的房間（見 socket 'connect'）
   } else {
     showNicknameOverlay();
   }
   updateNicknameDisplay();
 }
 
-function showNicknameOverlay(errorMsg) {
+// 顯示「進入房間」彈窗。已經有鎖定的暱稱時，暱稱欄位會帶入並設為唯讀；
+// unlockNickname = true 時（暱稱在該房間重複 / 被移除）讓使用者重新輸入暱稱。
+function showNicknameOverlay(errorMsg, opts = {}) {
   nicknameOverlay.classList.remove('hidden');
-  nicknameInput.value = '';
+
+  const lockName = !!myNickname && !opts.unlockNickname;
+  nicknameInput.value = lockName ? myNickname : (opts.keepNicknameValue ? nicknameInput.value : '');
+  nicknameInput.readOnly = lockName;
+  document.getElementById('nicknameHint').textContent = lockName
+    ? '您的暱稱已鎖定，無法自行更改。'
+    : '暱稱會顯示在您點擊的 CH 旁邊。設定後無法自行更改，請謹慎輸入。';
+
+  if (!opts.keepPassword) roomPasswordInput.value = myRoomPassword || '';
+
   if (errorMsg) {
     nicknameError.textContent = errorMsg;
     nicknameError.classList.remove('hidden');
   } else {
     nicknameError.classList.add('hidden');
   }
-  setTimeout(() => nicknameInput.focus(), 50);
+
+  setTimeout(() => {
+    if (opts.focus === 'password' || lockName) roomPasswordInput.focus();
+    else nicknameInput.focus();
+  }, 50);
 }
 function hideNicknameOverlay() {
   nicknameOverlay.classList.add('hidden');
 }
 
 function submitNickname() {
-  const val = nicknameInput.value.trim();
-  if (!val) {
+  const name = nicknameInput.value.trim().slice(0, 20);
+  const pw = roomPasswordInput.value.trim();
+  if (!name) {
     nicknameInput.focus();
     return;
   }
-  const candidate = val.slice(0, 20);
-  socket.emit('setNickname', candidate);
-  // 先不鎖定 localStorage，等伺服器 ack 成功後才儲存（避免暱稱重複/被禁用卻鎖死）
+  if (!pw) {
+    roomPasswordInput.focus();
+    return;
+  }
+  manualJoinPending = true;
+  // 被管理者移除時伺服器會中斷連線，這時要手動重新連線
+  if (!socket.connected) socket.connect();
+  socket.emit('joinRoom', { nickname: name, password: pw });
+  // 先不寫入 localStorage，等伺服器 join:ack 成功後才儲存（避免暱稱重複/被禁用卻鎖死）
+  myRoomPassword = pw;
 }
 
 nicknameSubmitBtn.addEventListener('click', submitNickname);
 nicknameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (!roomPasswordInput.value.trim()) roomPasswordInput.focus();
+    else submitNickname();
+  }
+});
+roomPasswordInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') submitNickname();
+});
+togglePasswordBtn.addEventListener('click', () => {
+  const show = roomPasswordInput.type === 'password';
+  roomPasswordInput.type = show ? 'text' : 'password';
+  togglePasswordBtn.textContent = show ? '隱藏' : '顯示';
 });
 
 function updateNicknameDisplay() {
   myNicknameDisplay.textContent = myNickname ? `您的暱稱：${myNickname}` : '';
 }
 
-socket.on('nickname:ack', (name) => {
-  myNickname = name;
-  localStorage.setItem(NICKNAME_KEY, name);
+function updateRoomDisplay() {
+  if (joined && myRoomPassword) {
+    roomDisplay.classList.remove('hidden');
+    switchRoomBtn.classList.remove('hidden');
+    roomPasswordText.textContent = showRoomPassword ? myRoomPassword : '••••';
+  } else {
+    roomDisplay.classList.add('hidden');
+    switchRoomBtn.classList.add('hidden');
+  }
+}
+
+roomDisplay.addEventListener('click', () => {
+  showRoomPassword = !showRoomPassword;
+  updateRoomDisplay();
+});
+
+// 換房間：清掉記住的房間密碼後重新載入（暱稱保留），重新輸入密碼
+switchRoomBtn.addEventListener('click', () => {
+  if (!confirm('確定要離開目前的房間嗎？之後需要重新輸入房間密碼。')) return;
+  socket.emit('leaveRoom');
+  storageRemove(ROOM_KEY);
+  window.location.reload();
+});
+
+socket.on('join:ack', ({ nickname, created }) => {
+  myNickname = nickname;
+  joined = true;
+  storageSet(NICKNAME_KEY, nickname);
+  if (myRoomPassword) storageSet(ROOM_KEY, myRoomPassword);
   updateNicknameDisplay();
+  updateRoomDisplay();
   hideNicknameOverlay();
+  if (manualJoinPending) showToast(created ? '已建立新房間，把密碼分享給隊友就能一起使用' : '已進入房間');
+  manualJoinPending = false;
 });
 
-socket.on('nickname:taken', () => {
-  showNicknameOverlay('這個暱稱已經有人在使用，請換一個');
-});
-
-socket.on('nickname:banned', () => {
-  localStorage.removeItem(NICKNAME_KEY);
-  showNicknameOverlay('這個暱稱已被管理者移除，請使用其他暱稱');
+socket.on('join:error', ({ field, code, message }) => {
+  joined = false;
+  manualJoinPending = false;
+  updateRoomDisplay();
+  if (code === 'banned') {
+    // 這個暱稱被移出此房間：解除暱稱鎖定，讓使用者換一個
+    storageRemove(NICKNAME_KEY);
+    myNickname = null;
+    updateNicknameDisplay();
+  }
+  if (field === 'nickname') {
+    showNicknameOverlay(message, { unlockNickname: true, focus: 'nickname' });
+  } else {
+    showNicknameOverlay(message, { keepPassword: true, focus: 'password', keepNicknameValue: true });
+  }
 });
 
 // 伺服器管理者強制修改了「我」的暱稱
 socket.on('forceNickname', (name) => {
   myNickname = name;
-  localStorage.setItem(NICKNAME_KEY, name);
+  storageSet(NICKNAME_KEY, name);
   updateNicknameDisplay();
-  hideNicknameOverlay();
 });
 
 socket.on('removedByAdmin', () => {
-  localStorage.removeItem(NICKNAME_KEY);
+  storageRemove(NICKNAME_KEY);
   myNickname = null;
+  joined = false;
   updateNicknameDisplay();
-  showNicknameOverlay('您已被管理者移除，請重新輸入暱稱加入');
+  updateRoomDisplay();
+  showNicknameOverlay('您已被管理者移出此房間，請使用其他暱稱，或輸入其他房間密碼', { unlockNickname: true });
 });
 
 socket.on('error:needNickname', () => {
@@ -136,6 +228,7 @@ socket.on('error:needNickname', () => {
 });
 
 socket.on('error:muted', () => showToast('您已被管理者禁止操作'));
+socket.on('error:toast', (msg) => showToast(msg));
 
 function showToast(msg) {
   const t = document.createElement('div');
@@ -281,7 +374,10 @@ function renderAdminMutedList() {
 socket.on('connect', () => {
   connStatusEl.textContent = '已連線';
   connStatusEl.className = 'conn-status ok';
-  if (myNickname) socket.emit('setNickname', myNickname);
+  // 已經有暱稱與房間密碼：自動進入（或斷線後重新進入）原本的房間
+  if (myNickname && myRoomPassword && (joined || storageGet(ROOM_KEY))) {
+    socket.emit('joinRoom', { nickname: myNickname, password: myRoomPassword });
+  }
 });
 socket.on('disconnect', () => {
   connStatusEl.textContent = '連線中斷，嘗試重新連線...';
@@ -297,7 +393,7 @@ function handleState(data) {
   tabs = data.tabs;
 
   if (!currentTabId || !tabs.find((t) => t.id === currentTabId)) {
-    currentTabId = tabs[0].id;
+    currentTabId = tabs.length ? tabs[0].id : null;
   }
 
   renderTabs();
@@ -571,7 +667,7 @@ function renderGridInto(target, tab, compact) {
 }
 
 function ensureNickname() {
-  if (!myNickname) {
+  if (!myNickname || !joined) {
     showNicknameOverlay();
     return false;
   }
