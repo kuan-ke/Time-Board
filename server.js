@@ -98,10 +98,21 @@ function findTab(room, tabId) {
   return room.tabs.find((t) => t.id === tabId);
 }
 
-function isNicknameTaken(room, name, excludeSocketId) {
+// 管理者在房間裡是「隱身」的：不算在線上人數、不出現在名單，也不佔用暱稱
+// （否則一般使用者輸入相同暱稱被擋下，就會發現房間裡有人）。
+function isAdminSocketId(socketId) {
+  const s = io.sockets.sockets.get(socketId);
+  return !!(s && s.data.isAdmin);
+}
+
+// joiningIsAdmin = true 時（管理者自己要進房）連其他管理者的暱稱也一起比對；
+// 一般使用者只跟一般使用者比對。
+function isNicknameTaken(room, name, excludeSocketId, joiningIsAdmin) {
   const norm = normalizeName(name);
   for (const [id, n] of room.connectedUsers.entries()) {
-    if (id !== excludeSocketId && normalizeName(n) === norm) return true;
+    if (id === excludeSocketId || normalizeName(n) !== norm) continue;
+    if (!joiningIsAdmin && isAdminSocketId(id)) continue;
+    return true;
   }
   return false;
 }
@@ -113,8 +124,13 @@ function broadcastState(room) {
 }
 
 function broadcastUsers(room) {
-  const list = Array.from(room.connectedUsers.entries()).map(([id, name]) => ({ id, name }));
-  io.to(room.id).emit('users:update', list);
+  const all = Array.from(room.connectedUsers.entries()).map(([id, name]) => ({ id, name, hidden: isAdminSocketId(id) }));
+  const visible = all.filter((u) => !u.hidden).map(({ id, name }) => ({ id, name }));
+  for (const [, s] of io.sockets.sockets) {
+    if (s.data.roomId !== room.id) continue;
+    // 一般使用者只會收到「看得見的人」；管理者收到完整名單（隱身者會標記 hidden）
+    s.emit('users:update', s.data.isAdmin ? all : visible);
+  }
   scheduleAdminRooms();
 }
 
@@ -126,7 +142,7 @@ function buildAdminRoomList() {
       room.tabs.forEach((t) => t.channels.forEach((c) => { if (c.state !== 'idle') activeCount++; }));
       return {
         password: room.password,
-        users: Array.from(room.connectedUsers.values()),
+        users: Array.from(room.connectedUsers.entries()).filter(([id]) => !isAdminSocketId(id)).map(([, n]) => n),
         activeCount,
         createdAt: room.createdAt
       };
@@ -272,7 +288,7 @@ io.on('connection', (socket) => {
         socket.emit('join:error', { field: 'nickname', code: 'banned', message: '這個暱稱已被管理者移出此房間，請使用其他暱稱' });
         return;
       }
-      if (isNicknameTaken(existing, trimmedName, socket.id)) {
+      if (isNicknameTaken(existing, trimmedName, socket.id, !!socket.data.isAdmin)) {
         socket.emit('join:error', { field: 'nickname', code: 'taken', message: '這個暱稱在此房間已經有人在使用，請換一個' });
         return;
       }
@@ -308,7 +324,7 @@ io.on('connection', (socket) => {
     if (!room || !socket.data.isAdmin) return;
     const trimmed = (name || '').trim().slice(0, 20);
     if (!trimmed) return;
-    if (isNicknameTaken(room, trimmed, socket.id)) {
+    if (isNicknameTaken(room, trimmed, socket.id, true)) {
       socket.emit('error:toast', '這個暱稱在此房間已經有人在使用');
       return;
     }
@@ -326,6 +342,7 @@ io.on('connection', (socket) => {
     const room = getRoom(socket);
     if (ok && room) socket.emit('admin:mutedList', Array.from(room.mutedNicknames.values()));
     if (ok) sendAdminRooms(socket);
+    if (room) broadcastUsers(room); // 驗證成功後立刻從其他人的線上名單消失
   });
 
   // 管理者強制修改「同房間、目前仍連線中」某個使用者的暱稱
