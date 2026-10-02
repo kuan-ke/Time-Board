@@ -63,6 +63,19 @@ const roomPasswordText = document.getElementById('roomPasswordText');
 const switchRoomBtn = document.getElementById('switchRoomBtn');
 
 let myRoomPassword = null;
+// 每個瀏覽器固定的識別碼：伺服器用它判斷「重新整理 / 重新連線的是同一個人」，
+// 這樣重新整理時不會因為舊連線還沒斷而被判定「暱稱已有人使用」。
+const CLIENT_ID_KEY = 'ch_timer_client_id';
+const myClientId = (() => {
+  let id = null;
+  try { id = localStorage.getItem(CLIENT_ID_KEY); } catch (e) { /* ignore */ }
+  if (!id || !/^[A-Za-z0-9-]{8,64}$/.test(id)) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+    try { localStorage.setItem(CLIENT_ID_KEY, id); } catch (e) { /* ignore */ }
+  }
+  return id;
+})();
 let joined = false;
 let manualJoinPending = false; // 使用者手動按「進入房間」（用來決定要不要顯示「已建立 / 已進入」提示）
 let showRoomPassword = false;
@@ -131,7 +144,7 @@ function submitNickname() {
   manualJoinPending = true;
   // 被管理者移除時伺服器會中斷連線，這時要手動重新連線
   if (!socket.connected) socket.connect();
-  socket.emit('joinRoom', { nickname: name, password: pw });
+  socket.emit('joinRoom', { nickname: name, password: pw, clientId: myClientId });
   // 先不寫入 localStorage，等伺服器 join:ack 成功後才儲存（避免暱稱重複/被禁用卻鎖死）
   myRoomPassword = pw;
 }
@@ -151,6 +164,25 @@ roomPasswordInput.addEventListener('input', () => {
   const cleaned = roomPasswordInput.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 6);
   if (cleaned !== roomPasswordInput.value) roomPasswordInput.value = cleaned;
 });
+// 產生隨機房間密碼（由伺服器產生，保證符合規則且不跟現有房間重複）
+document.getElementById('randomPasswordBtn').addEventListener('click', () => {
+  if (!socket.connected) {
+    showToast('尚未連線到伺服器，請稍候再試');
+    return;
+  }
+  socket.emit('generateRoomPassword', (pw) => {
+    if (!pw) {
+      showToast('產生失敗，請再按一次');
+      return;
+    }
+    roomPasswordInput.value = pw;
+    roomPasswordInput.type = 'text'; // 直接顯示出來，方便記下來分享給隊友
+    togglePasswordBtn.textContent = '隱藏';
+    nicknameError.classList.add('hidden');
+    roomPasswordInput.focus();
+  });
+});
+
 togglePasswordBtn.addEventListener('click', () => {
   const show = roomPasswordInput.type === 'password';
   roomPasswordInput.type = show ? 'text' : 'password';
@@ -259,13 +291,10 @@ function showToast(msg) {
 initNickname();
 
 // ---------- Admin ----------
-(function initAdmin() {
-  const params = new URLSearchParams(window.location.search);
-  const key = params.get('admin');
-  if (key) {
-    socket.emit('adminAuth', key);
-  }
-})();
+// 管理者密鑰在每次連線（含斷線重連）時都會重新送出，而且一定在 joinRoom 之前，
+// 這樣掛機太久斷線重連後，管理者仍然維持隱身（見 socket 'connect'）。
+const adminKeyFromUrl = new URLSearchParams(window.location.search).get('admin');
+let adminKeyRejected = false;
 
 socket.on('adminAuth:result', (ok) => {
   isAdmin = ok;
@@ -278,7 +307,8 @@ socket.on('adminAuth:result', (ok) => {
     renderAdminMutedList();
     renderAdminRoomList();
     updateNicknameDisplay();
-  } else {
+  } else if (!adminKeyRejected) {
+    adminKeyRejected = true;
     alert('管理者密鑰錯誤');
   }
 });
@@ -423,7 +453,7 @@ function adminJoinRoom(password) {
   adminSwitchFrom = joined ? myRoomPassword : null;
   myRoomPassword = password;
   manualJoinPending = true;
-  socket.emit('joinRoom', { nickname: myNickname, password });
+  socket.emit('joinRoom', { nickname: myNickname, password, clientId: myClientId });
 }
 
 socket.on('admin:mutedList', (list) => {
@@ -459,9 +489,10 @@ function renderAdminMutedList() {
 socket.on('connect', () => {
   connStatusEl.textContent = '已連線';
   connStatusEl.className = 'conn-status ok';
+  if (adminKeyFromUrl && !adminKeyRejected) socket.emit('adminAuth', adminKeyFromUrl);
   // 已經有暱稱與房間密碼：自動進入（或斷線後重新進入）原本的房間
   if (myNickname && myRoomPassword && (joined || storageGet(ROOM_KEY))) {
-    socket.emit('joinRoom', { nickname: myNickname, password: myRoomPassword });
+    socket.emit('joinRoom', { nickname: myNickname, password: myRoomPassword, clientId: myClientId });
   }
 });
 socket.on('disconnect', () => {
@@ -677,9 +708,7 @@ function renderRangePanel() {
   maxInput.value = tab.maxMinutes;
   minInput.disabled = !!tab.locked;
   maxInput.disabled = !!tab.locked;
-  rangeHintEl.textContent = tab.locked
-    ? '🔒 固定王，時間範圍無法修改（CH 仍可右鍵設定目標時刻）'
-    : 'CH 可右鍵自訂目標時刻';
+  rangeHintEl.textContent = '右鍵輸入死亡時間或中鍵輸入重生時間';
 }
 
 function submitRangeChange() {
@@ -739,6 +768,17 @@ function renderGridInto(target, tab, compact) {
     btn.addEventListener('click', () => {
       if (!ensureNickname()) return;
       socket.emit('channelClick', { tabId: tab.id, channelIndex: i });
+    });
+
+    // 中鍵：輸入重生時間。mousedown 先擋掉瀏覽器的中鍵自動捲動
+    btn.addEventListener('mousedown', (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+    btn.addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      if (!ensureNickname()) return;
+      openSpawnModal(tab, i);
     });
 
     btn.addEventListener('contextmenu', (e) => {
@@ -1009,6 +1049,101 @@ modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) closeModal();
 });
 
+// 右鍵視窗裡的「改輸入重生時間」：給沒有滑鼠中鍵（例如筆電觸控板）的人用
+document.getElementById('modalToSpawnBtn').addEventListener('click', () => {
+  if (!modalContext) return;
+  const tab = tabs.find((t) => t.id === modalContext.tabId);
+  const idx = modalContext.channelIndex;
+  closeModal();
+  if (tab) openSpawnModal(tab, idx);
+});
+
+// ---------- Modal (中鍵：輸入重生時間，絕對時刻：月/日 時:分，預設為現在) ----------
+const spawnOverlay = document.getElementById('spawnOverlay');
+const spawnTitle = document.getElementById('spawnTitle');
+const spawnMonth = document.getElementById('spawnMonth');
+const spawnDay = document.getElementById('spawnDay');
+const spawnHour = document.getElementById('spawnHour');
+const spawnMinute = document.getElementById('spawnMinute');
+const spawnPreview = document.getElementById('spawnPreview');
+let spawnContext = null; // { tabId, channelIndex }
+
+function openSpawnModal(tab, channelIndex) {
+  spawnContext = { tabId: tab.id, channelIndex };
+  spawnTitle.textContent = `輸入「${tab.name}」CH${channelIndex + 1} 重生時間`;
+  const now = new Date(Date.now() + clockOffset);
+  spawnMonth.value = now.getMonth() + 1;
+  spawnDay.value = now.getDate();
+  spawnHour.value = now.getHours();
+  spawnMinute.value = now.getMinutes();
+  updateSpawnPreview();
+  spawnOverlay.classList.remove('hidden');
+  setTimeout(() => { spawnHour.focus(); spawnHour.select(); }, 50);
+}
+
+function closeSpawnModal() {
+  spawnOverlay.classList.add('hidden');
+  spawnContext = null;
+}
+
+// 依輸入的 月/日 時:分 算出絕對時間（瀏覽器本地時區）；年份用今年，跨年時自動調整
+function readSpawnDate() {
+  const mo = Number(spawnMonth.value);
+  const d = Number(spawnDay.value);
+  const hh = Number(spawnHour.value);
+  const mm = Number(spawnMinute.value);
+  if (![mo, d, hh, mm].every(Number.isInteger)) return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  const now = new Date(Date.now() + clockOffset);
+  let date = new Date(now.getFullYear(), mo - 1, d, hh, mm, 0, 0);
+  if (date.getMonth() !== mo - 1) return null; // 例如 2/30 這種不存在的日期
+  const HALF_YEAR = 182 * 24 * 60 * 60 * 1000;
+  if (date.getTime() - now.getTime() > HALF_YEAR) date.setFullYear(date.getFullYear() - 1);
+  else if (now.getTime() - date.getTime() > HALF_YEAR) date.setFullYear(date.getFullYear() + 1);
+  return date;
+}
+
+function updateSpawnPreview() {
+  const date = readSpawnDate();
+  if (!date) {
+    spawnPreview.textContent = '請輸入正確的日期與時間';
+    return;
+  }
+  const diff = date.getTime() - (Date.now() + clockOffset);
+  spawnPreview.textContent = diff >= 0
+    ? `距離重生還有 ${formatMs(diff)}，儲存後此 CH 會倒數到這個時刻變成「出現中」。`
+    : `這個時間已經過了 ${formatMs(-diff)}，儲存後此 CH 會直接變成「出現中」。`;
+}
+
+[spawnMonth, spawnDay, spawnHour, spawnMinute].forEach((el) => {
+  el.addEventListener('input', updateSpawnPreview);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('spawnSaveBtn').click();
+    if (e.key === 'Escape') closeSpawnModal();
+  });
+});
+
+document.getElementById('spawnCancelBtn').addEventListener('click', closeSpawnModal);
+spawnOverlay.addEventListener('click', (e) => {
+  if (e.target === spawnOverlay) closeSpawnModal();
+});
+
+document.getElementById('spawnSaveBtn').addEventListener('click', () => {
+  if (!spawnContext) return;
+  const date = readSpawnDate();
+  if (!date) {
+    alert('請輸入正確的日期與時間（月 1~12、日 1~31、時 0~23、分 0~59）');
+    return;
+  }
+  socket.emit('channelSetSpawn', {
+    tabId: spawnContext.tabId,
+    channelIndex: spawnContext.channelIndex,
+    spawnTimeEpoch: date.getTime(),
+    spawnTimeLabel: `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  });
+  closeSpawnModal();
+});
+
 // ---------- 子母畫面（Picture-in-Picture，浮動在螢幕最上層的小視窗） ----------
 const pipBtn = document.getElementById('pipBtn');
 let pipWindow = null;
@@ -1050,7 +1185,7 @@ async function openPip() {
   }
 
   pipDoc = pipWindow.document;
-  pipDoc.title = 'CH 多人計時器';
+  pipDoc.title = '巡王計時器';
 
   // 套用跟主頁一樣的樣式表
   const link = pipDoc.createElement('link');
