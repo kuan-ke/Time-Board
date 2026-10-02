@@ -386,21 +386,18 @@ function refreshAfterTabSwitch() {
   renderGrid();
 }
 
-function getActiveTabsListTargets() {
-  const targets = [tabsListEl];
-  if (pipTabsListEl) targets.push(pipTabsListEl);
-  return targets;
-}
-
 function renderTabs() {
-  getActiveTabsListTargets().forEach((target) => renderTabsInto(target));
+  renderTabsInto(tabsListEl, false);
+  if (pipTabsListEl) renderTabsInto(pipTabsListEl, true);
 }
 
-function renderTabsInto(target) {
+// compact = true：子母畫面用，只顯示王的圖示（沒有圖片的分頁才退回顯示文字），不顯示鎖頭/刪除鈕，節省橫向空間
+function renderTabsInto(target, compact) {
   target.innerHTML = '';
   tabs.forEach((tab) => {
     const el = document.createElement('div');
-    el.className = 'tab-item' + (tab.id === currentTabId ? ' active' : '');
+    el.className = 'tab-item' + (tab.id === currentTabId ? ' active' : '') + (compact ? ' tab-item-compact' : '');
+    el.title = tab.name;
 
     if (tab.image) {
       const img = document.createElement('img');
@@ -410,11 +407,13 @@ function renderTabsInto(target) {
       el.appendChild(img);
     }
 
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = tab.name;
-    el.appendChild(nameSpan);
+    if (!compact || !tab.image) {
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = tab.name;
+      el.appendChild(nameSpan);
+    }
 
-    if (tab.locked) {
+    if (!compact && tab.locked) {
       const lockSpan = document.createElement('span');
       lockSpan.className = 'tab-lock';
       lockSpan.textContent = '🔒';
@@ -422,7 +421,7 @@ function renderTabsInto(target) {
       el.appendChild(lockSpan);
     }
 
-    if (!tab.locked && tabs.length > 1) {
+    if (!compact && !tab.locked && tabs.length > 1) {
       const closeBtn = document.createElement('span');
       closeBtn.textContent = '✕';
       closeBtn.className = 'close-btn';
@@ -513,11 +512,13 @@ function getActiveGridTargets() {
 function renderGrid() {
   const tab = getCurrentTab();
   if (!tab) return;
-  getActiveGridTargets().forEach((target) => renderGridInto(target, tab));
+  renderGridInto(gridEl, tab, false);
+  if (pipGridEl) renderGridInto(pipGridEl, tab, true);
   updateGridDisplay();
 }
 
-function renderGridInto(target, tab) {
+// compact = true：子母畫面用，標籤只顯示數字（不顯示 "ch." 前綴），省空間、字體也較小
+function renderGridInto(target, tab, compact) {
   target.innerHTML = '';
   for (let i = 0; i < CHANNEL_COUNT; i++) {
     const btn = document.createElement('div');
@@ -526,7 +527,7 @@ function renderGridInto(target, tab) {
 
     const label = document.createElement('div');
     label.className = 'ch-label';
-    label.textContent = `ch. ${i + 1}`;
+    label.textContent = compact ? `${i + 1}` : `ch. ${i + 1}`;
     btn.appendChild(label);
 
     const timerEl = document.createElement('div');
