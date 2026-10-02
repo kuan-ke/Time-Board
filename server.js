@@ -31,8 +31,8 @@ const BOSS_PRESETS = [
   { name: '樹妖王',     min: 45,  max: 45,  image: 'tree-demon-king.png' },
   { name: '巨居蟹',     min: 45,  max: 45,  image: 'giant-crab.png' },
   { name: '殭屍猴王',   min: 45,  max: 45,  image: 'zombie-monkey-king.png' },
-  { name: '蘑菇王',     min: 45,  max: 60,  image: 'mushroom-king.png' },
-  { name: '殭屍蘑菇王', min: 45,  max: 60,  image: 'zombie-mushroom-king.png' },
+  { name: '蘑菇王',     min: 40,  max: 60,  image: 'mushroom-king.png' },
+  { name: '殭屍蘑菇王', min: 40,  max: 60,  image: 'zombie-mushroom-king.png' },
   { name: '沼澤巨鱷',   min: 45,  max: 45,  image: 'swamp-crocodile.png' },
   { name: '巴洛古',     min: 240, max: 360, image: 'barogu.png' },
   { name: '雪毛怪人',   min: 45,  max: 60,  image: 'snow-fur-monster.png' }
