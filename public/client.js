@@ -33,6 +33,8 @@ const myNicknameDisplay = document.getElementById('myNicknameDisplay');
 const adminEditSelfBtn = document.getElementById('adminEditSelfBtn');
 const adminPanel = document.getElementById('adminPanel');
 const adminUserList = document.getElementById('adminUserList');
+const adminHiddenList = document.getElementById('adminHiddenList');
+let hiddenChannelsInfo = [];
 
 const nicknameOverlay = document.getElementById('nicknameOverlay');
 const nicknameInput = document.getElementById('nicknameInput');
@@ -208,10 +210,10 @@ function renderAdminUserList() {
     row.appendChild(renameBtn);
 
     const hideBtn = document.createElement('button');
-    hideBtn.textContent = '隱藏計時器';
-    hideBtn.title = '清除此人目前所有進行中的倒數';
+    hideBtn.textContent = '隱藏頻道';
+    hideBtn.title = '將此人目前啟動的頻道對所有人隱藏（倒數會在背景繼續進行，不會被清除或重置，也不影響其他人自己的頻道）';
     hideBtn.addEventListener('click', () => {
-      if (confirm(`確定要隱藏（清除）「${u.name}」目前所有進行中的計時器嗎？`)) {
+      if (confirm(`確定要隱藏「${u.name}」目前啟動的頻道嗎？\n倒數會在背景繼續進行，不會被清除，只是畫面上大家都看不到。`)) {
         socket.emit('adminHideUserTimers', { nickname: u.name });
       }
     });
@@ -229,6 +231,37 @@ function renderAdminUserList() {
     row.appendChild(removeBtn);
 
     adminUserList.appendChild(row);
+  });
+}
+
+socket.on('admin:hiddenList', (list) => {
+  hiddenChannelsInfo = list || [];
+  if (isAdmin) renderAdminHiddenList();
+});
+
+function renderAdminHiddenList() {
+  adminHiddenList.innerHTML = '';
+  if (hiddenChannelsInfo.length === 0) {
+    adminHiddenList.innerHTML = '<span style="color:#64748b;">目前沒有被隱藏的頻道</span>';
+    return;
+  }
+  hiddenChannelsInfo.forEach((info) => {
+    const row = document.createElement('div');
+    row.className = 'admin-user-row';
+
+    const label = document.createElement('span');
+    label.className = 'u-name';
+    label.textContent = `${info.tabName} ch.${info.channelIndex + 1}（👤${info.startedBy || '未知'}）`;
+    row.appendChild(label);
+
+    const unhideBtn = document.createElement('button');
+    unhideBtn.textContent = '取消隱藏';
+    unhideBtn.addEventListener('click', () => {
+      socket.emit('adminUnhideChannel', { tabId: info.tabId, channelIndex: info.channelIndex });
+    });
+    row.appendChild(unhideBtn);
+
+    adminHiddenList.appendChild(row);
   });
 }
 
@@ -345,8 +378,26 @@ function formatDateTime(ms) {
 }
 
 // ---------- Tabs ----------
+// 切換分頁後，主畫面與子母畫面（若開啟）都要一起刷新
+function refreshAfterTabSwitch() {
+  renderTabs();
+  renderRangePanel();
+  renderBossBanner();
+  renderGrid();
+}
+
+function getActiveTabsListTargets() {
+  const targets = [tabsListEl];
+  if (pipTabsListEl) targets.push(pipTabsListEl);
+  return targets;
+}
+
 function renderTabs() {
-  tabsListEl.innerHTML = '';
+  getActiveTabsListTargets().forEach((target) => renderTabsInto(target));
+}
+
+function renderTabsInto(target) {
+  target.innerHTML = '';
   tabs.forEach((tab) => {
     const el = document.createElement('div');
     el.className = 'tab-item' + (tab.id === currentTabId ? ' active' : '');
@@ -386,10 +437,7 @@ function renderTabs() {
 
     el.addEventListener('click', () => {
       currentTabId = tab.id;
-      renderTabs();
-      renderRangePanel();
-      renderBossBanner();
-      renderGrid();
+      refreshAfterTabSwitch();
     });
 
     el.addEventListener('dblclick', () => {
@@ -399,7 +447,7 @@ function renderTabs() {
       }
     });
 
-    tabsListEl.appendChild(el);
+    target.appendChild(el);
   });
 }
 
@@ -455,13 +503,23 @@ minInput.addEventListener('change', submitRangeChange);
 maxInput.addEventListener('change', submitRangeChange);
 
 // ---------- Grid ----------
+// 回傳目前要渲染的所有網格容器（主畫面 + 子母畫面，若有開啟）
+function getActiveGridTargets() {
+  const targets = [gridEl];
+  if (pipGridEl) targets.push(pipGridEl);
+  return targets;
+}
+
 function renderGrid() {
   const tab = getCurrentTab();
   if (!tab) return;
+  getActiveGridTargets().forEach((target) => renderGridInto(target, tab));
+  updateGridDisplay();
+}
 
-  gridEl.innerHTML = '';
+function renderGridInto(target, tab) {
+  target.innerHTML = '';
   for (let i = 0; i < CHANNEL_COUNT; i++) {
-    const ch = tab.channels[i];
     const btn = document.createElement('div');
     btn.className = 'ch-btn';
     btn.dataset.idx = i;
@@ -490,10 +548,8 @@ function renderGrid() {
       openModal(tab, i);
     });
 
-    gridEl.appendChild(btn);
+    target.appendChild(btn);
   }
-
-  updateGridDisplay();
 }
 
 function ensureNickname() {
@@ -509,33 +565,35 @@ function updateGridDisplay() {
   if (!tab) return;
   const now = Date.now() + clockOffset;
 
-  tab.channels.forEach((ch, i) => {
-    const btn = gridEl.querySelector(`[data-idx="${i}"]`);
-    if (!btn) return;
-    const timerEl = btn.querySelector('.ch-timer');
-    const whoEl = btn.querySelector('.ch-who');
+  getActiveGridTargets().forEach((target) => {
+    tab.channels.forEach((ch, i) => {
+      const btn = target.querySelector(`[data-idx="${i}"]`);
+      if (!btn) return;
+      const timerEl = btn.querySelector('.ch-timer');
+      const whoEl = btn.querySelector('.ch-who');
 
-    btn.classList.remove('counting', 'appearing');
+      btn.classList.remove('counting', 'appearing');
 
-    if (ch.state === 'idle' || ch.startTime === null) {
-      timerEl.textContent = '';
-      whoEl.textContent = '';
-      return;
-    }
+      if (ch.state === 'idle' || ch.startTime === null) {
+        timerEl.textContent = '';
+        whoEl.textContent = '';
+        return;
+      }
 
-    const minMs = (ch.customMin ?? tab.minMinutes) * 60000;
-    const maxMs = (ch.customMax ?? tab.maxMinutes) * 60000;
-    const elapsed = now - ch.startTime;
+      const minMs = (ch.customMin ?? tab.minMinutes) * 60000;
+      const maxMs = (ch.customMax ?? tab.maxMinutes) * 60000;
+      const elapsed = now - ch.startTime;
 
-    whoEl.textContent = ch.startedBy ? `👤${ch.startedBy}` : '';
+      whoEl.textContent = ch.startedBy ? `👤${ch.startedBy}` : '';
 
-    if (ch.state === 'counting') {
-      btn.classList.add('counting');
-      timerEl.textContent = formatMs(Math.max(0, minMs - elapsed));
-    } else if (ch.state === 'appearing') {
-      btn.classList.add('appearing');
-      timerEl.textContent = formatMs(Math.max(0, maxMs - elapsed));
-    }
+      if (ch.state === 'counting') {
+        btn.classList.add('counting');
+        timerEl.textContent = formatMs(Math.max(0, minMs - elapsed));
+      } else if (ch.state === 'appearing') {
+        btn.classList.add('appearing');
+        timerEl.textContent = formatMs(Math.max(0, maxMs - elapsed));
+      }
+    });
   });
 }
 
@@ -587,6 +645,8 @@ function renderStatusPanel() {
 
   renderStatusColumn(statusListCountingEl, countingRows, 'counting', '目前沒有倒數中的 CH');
   renderStatusColumn(statusListAppearingEl, appearingRows, 'appearing', '目前沒有出現中的 CH');
+  if (pipStatusCountingEl) renderStatusColumn(pipStatusCountingEl, countingRows, 'counting', '目前沒有倒數中的 CH');
+  if (pipStatusAppearingEl) renderStatusColumn(pipStatusAppearingEl, appearingRows, 'appearing', '目前沒有出現中的 CH');
 }
 
 function renderStatusColumn(container, rows, state, emptyText) {
@@ -610,7 +670,7 @@ function renderStatusColumn(container, rows, state, emptyText) {
 
     const chSpan = document.createElement('span');
     chSpan.className = 'status-ch';
-    chSpan.textContent = `CH${r.channelIndex + 1}`;
+    chSpan.textContent = `ch. ${r.channelIndex + 1}`;
     row.appendChild(chSpan);
 
     const whoSpan = document.createElement('span');
@@ -630,12 +690,20 @@ function renderStatusColumn(container, rows, state, emptyText) {
     timeSpan.textContent = formatMs(r.remainingMs);
     row.appendChild(timeSpan);
 
+    const killBtn = document.createElement('button');
+    killBtn.className = 'kill-btn';
+    killBtn.textContent = '擊殺';
+    killBtn.title = '回報剛剛擊殺，重新開始倒數';
+    killBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!ensureNickname()) return;
+      socket.emit('channelKillNow', { tabId: r.tabId, channelIndex: r.channelIndex });
+    });
+    row.appendChild(killBtn);
+
     row.addEventListener('click', () => {
       currentTabId = r.tabId;
-      renderTabs();
-      renderRangePanel();
-      renderBossBanner();
-      renderGrid();
+      refreshAfterTabSwitch();
     });
 
     container.appendChild(row);
@@ -711,6 +779,101 @@ modalResetBtn.addEventListener('click', () => {
 modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) closeModal();
 });
+
+// ---------- 子母畫面（Picture-in-Picture，浮動在螢幕最上層的小視窗） ----------
+const pipBtn = document.getElementById('pipBtn');
+let pipWindow = null;
+let pipDoc = null;
+let pipTabsListEl = null;
+let pipGridEl = null;
+let pipStatusCountingEl = null;
+let pipStatusAppearingEl = null;
+
+pipBtn.addEventListener('click', openPip);
+
+async function openPip() {
+  if (!('documentPictureInPicture' in window)) {
+    alert('您的瀏覽器不支援子母畫面功能，請用電腦版 Chrome 或 Edge 開啟這個網站再試一次。');
+    return;
+  }
+  if (pipWindow) {
+    pipWindow.focus();
+    return;
+  }
+
+  // 子母畫面的長寬比，跟目前「進行中頻道＋操作紀錄」整個右欄的長寬一樣
+  const rightRect = document.querySelector('.main-right').getBoundingClientRect();
+  const aspect = rightRect.width / Math.max(1, rightRect.height);
+  const targetHeight = Math.min(720, Math.max(380, Math.round((window.screen.height || 900) * 0.6)));
+  const targetWidth = Math.max(260, Math.round(targetHeight * aspect));
+
+  try {
+    pipWindow = await documentPictureInPicture.requestWindow({
+      width: targetWidth,
+      height: targetHeight
+    });
+  } catch (err) {
+    alert('無法開啟子母畫面：' + err.message);
+    pipWindow = null;
+    return;
+  }
+
+  pipDoc = pipWindow.document;
+  pipDoc.title = 'CH 多人計時器';
+
+  // 套用跟主頁一樣的樣式表
+  const link = pipDoc.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = new URL('style.css', window.location.href).href;
+  pipDoc.head.appendChild(link);
+
+  if (document.body.classList.contains('is-admin')) {
+    pipDoc.body.classList.add('is-admin');
+  }
+  pipDoc.body.classList.add('pip-body');
+
+  pipDoc.body.innerHTML = `
+    <div class="pip-root">
+      <div class="tabs-row" id="pipTabsRow">
+        <div class="tabs-list" id="pipTabsList"></div>
+      </div>
+      <div class="grid-wrapper">
+        <div class="grid" id="pipGrid"></div>
+      </div>
+      <div class="panel active-panel" id="pipActivePanel">
+        <div class="panel-title">📋 進行中頻道</div>
+        <div class="active-columns">
+          <div class="active-sub-panel">
+            <div class="sub-panel-title">⏳ 倒數中</div>
+            <div id="pipStatusCounting" class="status-list scrollable"></div>
+          </div>
+          <div class="active-sub-panel">
+            <div class="sub-panel-title">🌟 出現中</div>
+            <div id="pipStatusAppearing" class="status-list scrollable"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  pipTabsListEl = pipDoc.getElementById('pipTabsList');
+  pipGridEl = pipDoc.getElementById('pipGrid');
+  pipStatusCountingEl = pipDoc.getElementById('pipStatusCounting');
+  pipStatusAppearingEl = pipDoc.getElementById('pipStatusAppearing');
+
+  pipWindow.addEventListener('pagehide', () => {
+    pipWindow = null;
+    pipDoc = null;
+    pipTabsListEl = null;
+    pipGridEl = null;
+    pipStatusCountingEl = null;
+    pipStatusAppearingEl = null;
+  });
+
+  // 立刻把目前的資料畫進子母畫面
+  refreshAfterTabSwitch();
+  renderStatusPanel();
+}
 
 // ---------- Sound alert ----------
 let audioCtx = null;
