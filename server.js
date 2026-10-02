@@ -12,7 +12,8 @@ const PORT = process.env.PORT || 3000;
 const CHANNEL_COUNT = 60;
 const APPEAR_HOLD_MS = 10 * 60 * 1000; // 超過最大值後，「出現中」再保留 10 分鐘才消失
 const MAX_LOG = 500; // 每個房間的操作紀錄最多保留筆數（避免伺服器記憶體無限成長）
-const MAX_PASSWORD_LEN = 50;
+// 房間密碼規則：剛好 6 個字元，只能是英文大小寫或數字（大小寫視為不同）
+const PASSWORD_RE = /^[A-Za-z0-9]{6}$/;
 // 房間沒有任何人在線、也沒有任何進行中的 CH 超過這段時間，就自動刪除（釋放記憶體）
 const EMPTY_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -62,16 +63,18 @@ function createTab(name, minMinutes, maxMinutes, image, locked) {
 
 // ---------- 房間 ----------
 // 相同「房間密碼」的人會進到同一個房間，共用同一份計時器。
-// 房間以密碼的 SHA-256 雜湊當作 key，伺服器廣播與記錄中不會出現密碼原文。
+// 房間以密碼的 SHA-256 雜湊當作 key；密碼原文只會傳給通過驗證的管理者（管理者面板的「所有房間」列表）。
 const rooms = new Map(); // roomId -> room
 
 function roomIdFromPassword(password) {
   return 'room:' + crypto.createHash('sha256').update(password, 'utf8').digest('hex');
 }
 
-function createRoom(id) {
+function createRoom(id, password) {
   return {
     id,
+    password,
+    createdAt: Date.now(),
     // 每個新房間都有 9 個預設王分頁（固定鎖定，不可刪除、不可改時間範圍）
     tabs: BOSS_PRESETS.map((b) => createTab(b.name, b.min, b.max, b.image, true)),
     connectedUsers: new Map(),  // socket.id -> nickname
@@ -106,11 +109,45 @@ function isNicknameTaken(room, name, excludeSocketId) {
 function broadcastState(room) {
   room.lastActive = Date.now();
   io.to(room.id).emit('state:update', { tabs: room.tabs, serverTime: Date.now() });
+  scheduleAdminRooms();
 }
 
 function broadcastUsers(room) {
   const list = Array.from(room.connectedUsers.entries()).map(([id, name]) => ({ id, name }));
   io.to(room.id).emit('users:update', list);
+  scheduleAdminRooms();
+}
+
+// ---------- 管理者：所有房間列表 ----------
+function buildAdminRoomList() {
+  return Array.from(rooms.values())
+    .map((room) => {
+      let activeCount = 0;
+      room.tabs.forEach((t) => t.channels.forEach((c) => { if (c.state !== 'idle') activeCount++; }));
+      return {
+        password: room.password,
+        users: Array.from(room.connectedUsers.values()),
+        activeCount,
+        createdAt: room.createdAt
+      };
+    })
+    .sort((a, b) => b.users.length - a.users.length || b.activeCount - a.activeCount || b.createdAt - a.createdAt);
+}
+
+function sendAdminRooms(socket) {
+  socket.emit('admin:rooms', buildAdminRoomList());
+}
+
+// 房間狀態變動時，稍微延遲合併後再推送給所有管理者（避免一秒內推很多次）
+let adminRoomsTimer = null;
+function scheduleAdminRooms() {
+  if (adminRoomsTimer) return;
+  adminRoomsTimer = setTimeout(() => {
+    adminRoomsTimer = null;
+    for (const [, s] of io.sockets.sockets) {
+      if (s.data.isAdmin) sendAdminRooms(s);
+    }
+  }, 500);
 }
 
 function isMuted(room, socket) {
@@ -201,6 +238,7 @@ setInterval(() => {
   for (const [id, room] of rooms.entries()) {
     if (room.connectedUsers.size === 0 && !roomHasActiveChannels(room) && now - room.lastActive > EMPTY_ROOM_TTL_MS) {
       rooms.delete(id);
+      scheduleAdminRooms();
     }
   }
 }, 10 * 60 * 1000);
@@ -221,8 +259,8 @@ io.on('connection', (socket) => {
       socket.emit('join:error', { field: 'password', message: '請輸入房間密碼' });
       return;
     }
-    if (pw.length > MAX_PASSWORD_LEN) {
-      socket.emit('join:error', { field: 'password', message: `房間密碼最多 ${MAX_PASSWORD_LEN} 個字` });
+    if (!PASSWORD_RE.test(pw)) {
+      socket.emit('join:error', { field: 'password', message: '房間密碼必須剛好 6 個字元，只能使用英文大小寫或數字' });
       return;
     }
 
@@ -244,7 +282,7 @@ io.on('connection', (socket) => {
     if (socket.data.roomId && socket.data.roomId !== roomId) leaveCurrentRoom(socket);
 
     const created = !existing;
-    const room = existing || createRoom(roomId);
+    const room = existing || createRoom(roomId, pw);
     if (created) rooms.set(roomId, room);
 
     socket.join(roomId);
@@ -287,6 +325,7 @@ io.on('connection', (socket) => {
     socket.emit('adminAuth:result', ok);
     const room = getRoom(socket);
     if (ok && room) socket.emit('admin:mutedList', Array.from(room.mutedNicknames.values()));
+    if (ok) sendAdminRooms(socket);
   });
 
   // 管理者強制修改「同房間、目前仍連線中」某個使用者的暱稱
