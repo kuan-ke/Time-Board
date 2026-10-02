@@ -32,6 +32,10 @@
     <div id="adminUserList" class="admin-user-list"></div>
     <span class="admin-panel-title" id="adminMutedTitle" style="margin-left:14px;">🚫 已禁止操作：</span>
     <div id="adminMutedList" class="admin-user-list"></div>
+    <div class="admin-rooms-row">
+      <span class="admin-panel-title">🏠 所有房間（<span id="adminRoomCount">0</span>）：</span>
+      <div id="adminRoomList" class="admin-user-list"></div>
+    </div>
   </div>
 
   <div class="main-row">
@@ -109,10 +113,10 @@
 
     <label class="join-label" for="roomPasswordInput">房間密碼</label>
     <div class="password-row">
-      <input type="password" id="roomPasswordInput" maxlength="50" placeholder="建立或輸入房間密碼..." autocomplete="off" />
+      <input type="password" id="roomPasswordInput" maxlength="6" placeholder="6 碼英文或數字" autocomplete="off" autocapitalize="off" spellcheck="false" />
       <button type="button" id="togglePasswordBtn" class="btn-secondary password-toggle" title="顯示 / 隱藏密碼">顯示</button>
     </div>
-    <p class="modal-note join-hint">輸入相同密碼的人會進到同一個房間、共用同一組計時器。輸入新的密碼就會建立新房間。<br />建議使用不容易被猜到的密碼，太簡單的密碼（例如 1234）可能會跟陌生人撞到同一間。</p>
+    <p class="modal-note join-hint">密碼為 <b>6 個字元</b>，只能用英文大小寫或數字（大小寫不同視為不同密碼）。<br />輸入相同密碼的人會進到同一個房間、共用同一組計時器；輸入新的密碼就會建立新房間。建議不要用 123456、aaaaaa 這類太好猜的密碼。</p>
 
     <div id="nicknameError" class="nickname-error hidden"></div>
     <div class="modal-buttons">
