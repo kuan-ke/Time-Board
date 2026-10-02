@@ -158,7 +158,8 @@ togglePasswordBtn.addEventListener('click', () => {
 });
 
 function updateNicknameDisplay() {
-  myNicknameDisplay.textContent = myNickname ? `您的暱稱：${myNickname}` : '';
+  myNicknameDisplay.textContent = myNickname ? `您的暱稱：${myNickname}${isAdmin ? '（👻 隱身中）' : ''}` : '';
+  myNicknameDisplay.title = isAdmin ? '管理者不會出現在其他人的線上人數與名單中' : '';
 }
 
 function updateRoomDisplay() {
@@ -276,6 +277,7 @@ socket.on('adminAuth:result', (ok) => {
     renderAdminUserList();
     renderAdminMutedList();
     renderAdminRoomList();
+    updateNicknameDisplay();
   } else {
     alert('管理者密鑰錯誤');
   }
@@ -301,17 +303,20 @@ socket.on('users:update', (list) => {
 });
 
 function renderOnlineUsersBar() {
-  onlineCountEl.textContent = onlineUsers.length;
-  onlineNamesEl.textContent = onlineUsers.map((u) => u.name).join('、');
+  // 隱身的管理者不列入（管理者自己看到的人數也跟一般人一樣）
+  const visible = onlineUsers.filter((u) => !u.hidden);
+  onlineCountEl.textContent = visible.length;
+  onlineNamesEl.textContent = visible.map((u) => u.name).join('、');
 }
 
 function renderAdminUserList() {
   adminUserList.innerHTML = '';
-  if (onlineUsers.length === 0) {
-    adminUserList.innerHTML = '<span style="color:#64748b;">目前沒有已設定暱稱的使用者</span>';
+  const players = onlineUsers.filter((u) => !u.hidden); // 不列出管理者（包含自己）
+  if (players.length === 0) {
+    adminUserList.innerHTML = '<span style="color:#64748b;">此房間目前沒有其他使用者</span>';
     return;
   }
-  onlineUsers.forEach((u) => {
+  players.forEach((u) => {
     const row = document.createElement('div');
     row.className = 'admin-user-row';
 
