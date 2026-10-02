@@ -185,7 +185,7 @@ body {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  max-height: 72px;
+  max-height: 150px;
   overflow-y: auto;
 }
 .admin-panel-title {
@@ -220,6 +220,10 @@ body {
 .admin-user-row button:hover { background: #3a4d78; }
 .admin-user-row button.danger { background: #5b1a1a; color: #fca5a5; }
 .admin-user-row button.danger:hover { background: #7f1d1d; }
+.admin-rooms-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-basis: 100%; }
+.admin-room-row.current { border-color: #8b5cf6; background: #221a3d; }
+.admin-room-row .r-pw { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; color: #c4b5fd; }
+.admin-room-row .r-meta { color: var(--text-dim); }
 
 /* ---------- Tabs ---------- */
 .tabs-row {
