@@ -33,8 +33,8 @@ const myNicknameDisplay = document.getElementById('myNicknameDisplay');
 const adminEditSelfBtn = document.getElementById('adminEditSelfBtn');
 const adminPanel = document.getElementById('adminPanel');
 const adminUserList = document.getElementById('adminUserList');
-const adminHiddenList = document.getElementById('adminHiddenList');
-let hiddenChannelsInfo = [];
+const adminMutedList = document.getElementById('adminMutedList');
+let mutedList = []; // 被禁止操作的暱稱
 
 const nicknameOverlay = document.getElementById('nicknameOverlay');
 const nicknameInput = document.getElementById('nicknameInput');
@@ -135,6 +135,16 @@ socket.on('error:needNickname', () => {
   showNicknameOverlay();
 });
 
+socket.on('error:muted', () => showToast('您已被管理者禁止操作'));
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
 initNickname();
 
 // ---------- Admin ----------
@@ -154,6 +164,7 @@ socket.on('adminAuth:result', (ok) => {
     adminEditSelfBtn.classList.remove('hidden');
     adminClearLogBtn.classList.remove('hidden');
     renderAdminUserList();
+    renderAdminMutedList();
   } else {
     alert('管理者密鑰錯誤');
   }
@@ -209,15 +220,18 @@ function renderAdminUserList() {
     });
     row.appendChild(renameBtn);
 
-    const hideBtn = document.createElement('button');
-    hideBtn.textContent = '隱藏頻道';
-    hideBtn.title = '將此人目前啟動的頻道對所有人隱藏（倒數會在背景繼續進行，不會被清除或重置，也不影響其他人自己的頻道）';
-    hideBtn.addEventListener('click', () => {
-      if (confirm(`確定要隱藏「${u.name}」目前啟動的頻道嗎？\n倒數會在背景繼續進行，不會被清除，只是畫面上大家都看不到。`)) {
-        socket.emit('adminHideUserTimers', { nickname: u.name });
+    const isMutedUser = mutedList.some((n) => n.toLowerCase() === u.name.toLowerCase());
+    const muteBtn = document.createElement('button');
+    muteBtn.textContent = isMutedUser ? '解除禁止' : '禁止操作';
+    muteBtn.title = '禁止此人進行任何操作（點 CH、擊殺、右鍵回報、分頁編輯），已存在的倒數不受影響';
+    muteBtn.addEventListener('click', () => {
+      if (isMutedUser) {
+        socket.emit('adminUnmuteUser', { nickname: u.name });
+      } else if (confirm(`確定要禁止「${u.name}」進行任何操作嗎？`)) {
+        socket.emit('adminMuteUser', { nickname: u.name });
       }
     });
-    row.appendChild(hideBtn);
+    row.appendChild(muteBtn);
 
     const removeBtn = document.createElement('button');
     removeBtn.textContent = '移除';
@@ -234,34 +248,32 @@ function renderAdminUserList() {
   });
 }
 
-socket.on('admin:hiddenList', (list) => {
-  hiddenChannelsInfo = list || [];
-  if (isAdmin) renderAdminHiddenList();
+socket.on('admin:mutedList', (list) => {
+  mutedList = list || [];
+  if (isAdmin) {
+    renderAdminMutedList();
+    renderAdminUserList();
+  }
 });
 
-function renderAdminHiddenList() {
-  adminHiddenList.innerHTML = '';
-  if (hiddenChannelsInfo.length === 0) {
-    adminHiddenList.innerHTML = '<span style="color:#64748b;">目前沒有被隱藏的頻道</span>';
+function renderAdminMutedList() {
+  adminMutedList.innerHTML = '';
+  if (mutedList.length === 0) {
+    adminMutedList.innerHTML = '<span style="color:#64748b;">目前沒有被禁止的使用者</span>';
     return;
   }
-  hiddenChannelsInfo.forEach((info) => {
+  mutedList.forEach((name) => {
     const row = document.createElement('div');
     row.className = 'admin-user-row';
-
     const label = document.createElement('span');
     label.className = 'u-name';
-    label.textContent = `${info.tabName} ch.${info.channelIndex + 1}（👤${info.startedBy || '未知'}）`;
+    label.textContent = name;
     row.appendChild(label);
-
-    const unhideBtn = document.createElement('button');
-    unhideBtn.textContent = '取消隱藏';
-    unhideBtn.addEventListener('click', () => {
-      socket.emit('adminUnhideChannel', { tabId: info.tabId, channelIndex: info.channelIndex });
-    });
-    row.appendChild(unhideBtn);
-
-    adminHiddenList.appendChild(row);
+    const btn = document.createElement('button');
+    btn.textContent = '解除禁止';
+    btn.addEventListener('click', () => socket.emit('adminUnmuteUser', { nickname: name }));
+    row.appendChild(btn);
+    adminMutedList.appendChild(row);
   });
 }
 
@@ -384,6 +396,7 @@ function refreshAfterTabSwitch() {
   renderRangePanel();
   renderBossBanner();
   renderGrid();
+  if (typeof renderStatusPanel === 'function') renderStatusPanel();
 }
 
 function renderTabs() {
@@ -534,6 +547,10 @@ function renderGridInto(target, tab, compact) {
     timerEl.className = 'ch-timer';
     btn.appendChild(timerEl);
 
+    const spawnEl = document.createElement('div');
+    spawnEl.className = 'ch-spawn';
+    btn.appendChild(spawnEl);
+
     const whoEl = document.createElement('div');
     whoEl.className = 'ch-who';
     btn.appendChild(whoEl);
@@ -571,12 +588,14 @@ function updateGridDisplay() {
       const btn = target.querySelector(`[data-idx="${i}"]`);
       if (!btn) return;
       const timerEl = btn.querySelector('.ch-timer');
+      const spawnEl = btn.querySelector('.ch-spawn');
       const whoEl = btn.querySelector('.ch-who');
 
       btn.classList.remove('counting', 'appearing');
 
       if (ch.state === 'idle' || ch.startTime === null) {
         timerEl.textContent = '';
+        spawnEl.textContent = '';
         whoEl.textContent = '';
         return;
       }
@@ -585,6 +604,7 @@ function updateGridDisplay() {
       const maxMs = (ch.customMax ?? tab.maxMinutes) * 60000;
       const elapsed = now - ch.startTime;
 
+      spawnEl.textContent = `🕒${formatClock(ch.startTime + minMs)}`; // 出生時間 = 最小值倒數結束的時刻
       whoEl.textContent = ch.startedBy ? `👤${ch.startedBy}` : '';
 
       if (ch.state === 'counting') {
@@ -592,10 +612,21 @@ function updateGridDisplay() {
         timerEl.textContent = formatMs(Math.max(0, minMs - elapsed));
       } else if (ch.state === 'appearing') {
         btn.classList.add('appearing');
-        timerEl.textContent = formatMs(Math.max(0, maxMs - elapsed));
+        timerEl.textContent = appearingText(maxMs, elapsed);
       }
     });
   });
+}
+
+// 精準時刻 HH:MM:SS（24 小時制，使用者本地時區）
+function formatClock(ms) {
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+// 出現中：未到最大值 -> 顯示距離最大值的剩餘時間；超過最大值 -> 顯示 +已超過多久（伺服器會在 10 分鐘後移除）
+function appearingText(maxMs, elapsed) {
+  return elapsed >= maxMs ? `+${formatMs(elapsed - maxMs)}` : formatMs(maxMs - elapsed);
 }
 
 function formatMs(ms) {
@@ -609,51 +640,58 @@ function formatMs(ms) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// ---------- Status panel (all tabs, split into 倒數中 / 出現中) ----------
+// ---------- Status panel（本王 / 總頻道，分成 倒數中 / 出現中） ----------
+let activeView = 'boss'; // 'boss' = 只看目前選的王；'all' = 總頻道（所有王）
+
 function renderStatusPanel() {
   const now = Date.now() + clockOffset;
+  const showAll = activeView === 'all';
   const countingRows = [];
   const appearingRows = [];
 
   tabs.forEach((tab) => {
+    if (!showAll && tab.id !== currentTabId) return;
     tab.channels.forEach((ch, idx) => {
       if (ch.state === 'idle' || ch.startTime === null) return;
       const minMs = (ch.customMin ?? tab.minMinutes) * 60000;
       const maxMs = (ch.customMax ?? tab.maxMinutes) * 60000;
+      const elapsed = now - ch.startTime;
+      const spawnAt = ch.startTime + minMs; // 出生時間（最小值倒數結束的時刻）
 
       const base = {
         tabId: tab.id,
         tabName: tab.name,
         channelIndex: idx,
-        who: ch.startedBy || '未知'
+        who: ch.startedBy || '未知',
+        spawnAt
       };
 
       if (ch.state === 'counting') {
-        const remainingMs = Math.max(0, minMs - (now - ch.startTime));
-        countingRows.push({ ...base, remainingMs, soon: remainingMs <= SOON_THRESHOLD_MS });
+        const remainingMs = Math.max(0, minMs - elapsed);
+        countingRows.push({ ...base, remainingMs, timeText: formatMs(remainingMs), soon: remainingMs <= SOON_THRESHOLD_MS });
       } else if (ch.state === 'appearing') {
-        const becameAppearingAt = ch.startTime + minMs; // 這個頻道「變成出現中」的時間點
-        const remainingMs = Math.max(0, maxMs - (now - ch.startTime));
-        appearingRows.push({ ...base, remainingMs, becameAppearingAt });
+        appearingRows.push({ ...base, timeText: appearingText(maxMs, elapsed), overdue: elapsed >= maxMs });
       }
     });
   });
 
-  // 倒數中：最接近變成出現中的排最上面
+  // 倒數中：最接近變成出現中的排最上面；出現中：最早變成出現中的排最上面
   countingRows.sort((a, b) => a.remainingMs - b.remainingMs);
-  // 出現中：最早變成出現中的排最上面
-  appearingRows.sort((a, b) => a.becameAppearingAt - b.becameAppearingAt);
+  appearingRows.sort((a, b) => a.spawnAt - b.spawnAt);
 
-  renderStatusColumn(statusListCountingEl, countingRows, 'counting', '目前沒有倒數中的 CH');
-  renderStatusColumn(statusListAppearingEl, appearingRows, 'appearing', '目前沒有出現中的 CH');
-  if (pipStatusCountingEl) renderStatusColumn(pipStatusCountingEl, countingRows, 'counting', '目前沒有倒數中的 CH');
-  if (pipStatusAppearingEl) renderStatusColumn(pipStatusAppearingEl, appearingRows, 'appearing', '目前沒有出現中的 CH');
+  const emptyC = showAll ? '目前沒有倒數中的 CH' : '這隻王目前沒有倒數中的 CH';
+  const emptyA = showAll ? '目前沒有出現中的 CH' : '這隻王目前沒有出現中的 CH';
+  renderStatusColumn(statusListCountingEl, countingRows, emptyC, showAll);
+  renderStatusColumn(statusListAppearingEl, appearingRows, emptyA, showAll);
+  if (pipStatusCountingEl) renderStatusColumn(pipStatusCountingEl, countingRows, emptyC, showAll);
+  if (pipStatusAppearingEl) renderStatusColumn(pipStatusAppearingEl, appearingRows, emptyA, showAll);
 }
 
-function renderStatusColumn(container, rows, state, emptyText) {
+function renderStatusColumn(container, rows, emptyText, showTabName) {
+  const doc = container.ownerDocument;
   container.innerHTML = '';
   if (rows.length === 0) {
-    const empty = document.createElement('div');
+    const empty = doc.createElement('div');
     empty.className = 'status-empty';
     empty.textContent = emptyText;
     container.appendChild(empty);
@@ -661,37 +699,45 @@ function renderStatusColumn(container, rows, state, emptyText) {
   }
 
   rows.forEach((r) => {
-    const row = document.createElement('div');
+    const row = doc.createElement('div');
     row.className = 'status-row' + (r.soon ? ' soon' : '');
 
-    const tag = document.createElement('span');
-    tag.className = 'status-tag';
-    tag.textContent = r.tabName;
-    row.appendChild(tag);
+    if (showTabName) {
+      const tag = doc.createElement('span');
+      tag.className = 'status-tag';
+      tag.textContent = r.tabName;
+      row.appendChild(tag);
+    }
 
-    const chSpan = document.createElement('span');
+    const chSpan = doc.createElement('span');
     chSpan.className = 'status-ch';
     chSpan.textContent = `ch. ${r.channelIndex + 1}`;
     row.appendChild(chSpan);
 
-    const whoSpan = document.createElement('span');
+    const whoSpan = doc.createElement('span');
     whoSpan.className = 'status-who';
     whoSpan.textContent = `👤${r.who}`;
     row.appendChild(whoSpan);
 
     if (r.soon) {
-      const soonTag = document.createElement('span');
+      const soonTag = doc.createElement('span');
       soonTag.className = 'status-soon-tag';
       soonTag.textContent = '⚠即將出現';
       row.appendChild(soonTag);
     }
 
-    const timeSpan = document.createElement('span');
-    timeSpan.className = 'status-time';
-    timeSpan.textContent = formatMs(r.remainingMs);
+    const spawnSpan = doc.createElement('span');
+    spawnSpan.className = 'status-spawn';
+    spawnSpan.title = '出生時間（最小值倒數結束的時刻）';
+    spawnSpan.textContent = `🕒${formatClock(r.spawnAt)}`;
+    row.appendChild(spawnSpan);
+
+    const timeSpan = doc.createElement('span');
+    timeSpan.className = 'status-time' + (r.overdue ? ' overdue' : '');
+    timeSpan.textContent = r.timeText;
     row.appendChild(timeSpan);
 
-    const killBtn = document.createElement('button');
+    const killBtn = doc.createElement('button');
     killBtn.className = 'kill-btn';
     killBtn.textContent = '擊殺';
     killBtn.title = '回報剛剛擊殺，重新開始倒數';
@@ -705,6 +751,7 @@ function renderStatusColumn(container, rows, state, emptyText) {
     row.addEventListener('click', () => {
       currentTabId = r.tabId;
       refreshAfterTabSwitch();
+      renderStatusPanel();
     });
 
     container.appendChild(row);
@@ -802,11 +849,13 @@ async function openPip() {
     return;
   }
 
-  // 子母畫面的長寬比，跟目前「進行中頻道＋操作紀錄」整個右欄的長寬一樣
+  // 子母畫面預設尺寸：以原本的預設大小為基準，寬 x1.2、高 x1.4
   const rightRect = document.querySelector('.main-right').getBoundingClientRect();
   const aspect = rightRect.width / Math.max(1, rightRect.height);
-  const targetHeight = Math.min(720, Math.max(380, Math.round((window.screen.height || 900) * 0.6)));
-  const targetWidth = Math.max(260, Math.round(targetHeight * aspect));
+  const baseHeight = Math.min(720, Math.max(380, Math.round((window.screen.height || 900) * 0.6)));
+  const baseWidth = Math.max(260, Math.round(baseHeight * aspect));
+  const targetWidth = Math.min(Math.round(baseWidth * 1.2), (window.screen.availWidth || 1600) - 40);
+  const targetHeight = Math.min(Math.round(baseHeight * 1.4), (window.screen.availHeight || 900) - 40);
 
   try {
     pipWindow = await documentPictureInPicture.requestWindow({
@@ -842,7 +891,10 @@ async function openPip() {
         <div class="grid" id="pipGrid"></div>
       </div>
       <div class="panel active-panel" id="pipActivePanel">
-        <div class="panel-title">📋 進行中頻道</div>
+        <div class="panel-title-row">
+          <div class="panel-title">📋 進行中頻道</div>
+          <div class="view-toggle"><button data-view="boss">本王</button><button data-view="all">總頻道</button></div>
+        </div>
         <div class="active-columns">
           <div class="active-sub-panel">
             <div class="sub-panel-title">⏳ 倒數中</div>
@@ -861,6 +913,7 @@ async function openPip() {
   pipGridEl = pipDoc.getElementById('pipGrid');
   pipStatusCountingEl = pipDoc.getElementById('pipStatusCounting');
   pipStatusAppearingEl = pipDoc.getElementById('pipStatusAppearing');
+  bindViewToggle(pipDoc);
 
   pipWindow.addEventListener('pagehide', () => {
     pipWindow = null;
@@ -875,6 +928,29 @@ async function openPip() {
   refreshAfterTabSwitch();
   renderStatusPanel();
 }
+
+// ---------- 本王 / 總頻道 切換鈕（主畫面與子母畫面共用同一個狀態） ----------
+function bindViewToggle(root) {
+  root.querySelectorAll('.view-toggle button').forEach((b) => {
+    b.addEventListener('click', () => {
+      activeView = b.dataset.view;
+      syncViewToggles();
+      renderStatusPanel();
+    });
+  });
+  syncViewToggles();
+}
+
+function syncViewToggles() {
+  [document, pipDoc].forEach((d) => {
+    if (!d) return;
+    d.querySelectorAll('.view-toggle button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.view === activeView);
+    });
+  });
+}
+
+bindViewToggle(document);
 
 // ---------- Sound alert ----------
 let audioCtx = null;
