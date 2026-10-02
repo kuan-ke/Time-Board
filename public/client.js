@@ -45,7 +45,6 @@ const modalOverlay = document.getElementById('modalOverlay');
 const modalHour = document.getElementById('modalHour');
 const modalMinute = document.getElementById('modalMinute');
 const modalTitle = document.getElementById('modalTitle');
-const modalStateNote = document.getElementById('modalStateNote');
 const modalResetBtn = document.getElementById('modalResetBtn');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
 const modalSaveBtn = document.getElementById('modalSaveBtn');
@@ -632,13 +631,15 @@ function renderTabsInto(target, compact) {
       el.appendChild(img);
     }
 
-    if (!compact || !tab.image) {
+    // 有圖片的王只顯示圖片（滑鼠移上去會顯示名稱），沒有圖片的自訂分頁才顯示文字
+    if (tab.image) el.classList.add('tab-item-image');
+    if (!tab.image) {
       const nameSpan = document.createElement('span');
       nameSpan.textContent = tab.name;
       el.appendChild(nameSpan);
     }
 
-    if (!compact && tab.locked) {
+    if (!compact && tab.locked && !tab.image) {
       const lockSpan = document.createElement('span');
       lockSpan.className = 'tab-lock';
       lockSpan.textContent = '🔒';
@@ -997,7 +998,6 @@ function openModal(tab, channelIndex) {
   modalHour.value = now.getHours();
   modalMinute.value = now.getMinutes();
 
-  modalStateNote.textContent = '請輸入王被擊殺的時間（24 小時制，例如 23 點 50 分）。若輸入的時間比現在晚，會自動視為昨天的這個時間，因為死亡時間一定是過去式。儲存後會以此時間重新計算倒數，並覆蓋此 CH 目前的狀態。';
 
   modalOverlay.classList.remove('hidden');
 }
