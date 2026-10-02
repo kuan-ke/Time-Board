@@ -43,6 +43,24 @@ body {
   overflow: hidden;
 }
 
+/* ---------- 子母畫面（Picture-in-Picture）內部版面 ---------- */
+.pip-root {
+  height: 100vh;
+  width: 100%;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.pip-root .tabs-row { max-height: 30%; overflow-y: auto; }
+.pip-root .grid-wrapper { flex: 1.3; min-height: 0; }
+.pip-root .active-panel { flex: 1; min-height: 0; }
+.pip-root .ch-label { font-size: 14px; }
+.pip-root .ch-timer { font-size: 12px; }
+.pip-root .ch-who { font-size: 10px; }
+
 /* ---------- Header ---------- */
 .top-bar {
   display: flex;
@@ -380,11 +398,11 @@ body {
 .ch-btn:hover { transform: scale(1.05); }
 
 /* 文字整體置中並盡量撐滿按鈕（約占按鈕 5/8 的視覺比重） */
-.ch-btn .ch-label { font-size: 13px; line-height: 1.15; font-weight: 800; }
-.ch-btn .ch-timer { font-size: 12px; margin-top: 2px; font-family: "Consolas", monospace; line-height: 1.1; font-weight: 700; }
+.ch-btn .ch-label { font-size: 19px; line-height: 1.15; font-weight: 800; }
+.ch-btn .ch-timer { font-size: 17px; margin-top: 3px; font-family: "Consolas", monospace; line-height: 1.1; font-weight: 700; }
 .ch-btn .ch-who {
-  font-size: 10px;
-  margin-top: 1px;
+  font-size: 13px;
+  margin-top: 2px;
   font-weight: 700;
   max-width: 100%;
   overflow: hidden;
@@ -536,6 +554,19 @@ body.is-admin .log-del-btn { display: inline-block; }
 .status-row .status-ch { color: var(--text-dim); }
 .status-row .status-who { color: #93c5fd; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .status-row .status-time { margin-left: auto; font-family: "Consolas", monospace; color: var(--text); flex-shrink: 0; font-weight: 700; }
+
+.kill-btn {
+  flex-shrink: 0;
+  border: 1px solid #b91c1c;
+  background: #7f1d1d;
+  color: #fecaca;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.kill-btn:hover { background: #991b1b; }
 
 .active-panel .panel-title { font-size: 13px; }
 .active-panel .sub-panel-title { font-size: 12px; }
