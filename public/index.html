@@ -28,8 +28,8 @@
   <div id="adminPanel" class="admin-panel hidden">
     <span class="admin-panel-title">🔑 管理者：</span>
     <div id="adminUserList" class="admin-user-list"></div>
-    <span class="admin-panel-title" id="adminHiddenTitle" style="margin-left:14px;">🙈 已隱藏的頻道：</span>
-    <div id="adminHiddenList" class="admin-user-list"></div>
+    <span class="admin-panel-title" id="adminMutedTitle" style="margin-left:14px;">🚫 已禁止操作：</span>
+    <div id="adminMutedList" class="admin-user-list"></div>
   </div>
 
   <div class="main-row">
@@ -63,7 +63,10 @@
 
     <div class="main-right">
       <div class="panel active-panel">
-        <div class="panel-title">📋 進行中頻道（即時，結束後自動消失）</div>
+        <div class="panel-title-row">
+          <div class="panel-title">📋 進行中頻道</div>
+          <div class="view-toggle"><button data-view="boss" class="active" title="只看目前選的這隻王">本王</button><button data-view="all" title="所有王的進行中頻道">總頻道</button></div>
+        </div>
         <div class="active-columns">
           <div class="active-sub-panel">
             <div class="sub-panel-title">⏳ 倒數中</div>
