@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CH 多人計時器</title>
+<title>巡王計時器</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
 
   <header class="top-bar">
     <div class="top-bar-left">
-      <h1>CH 多人計時器</h1>
+      <h1>巡王計時器</h1>
       <div id="onlineUsersBar" class="online-users-bar">
         <span class="online-label">🟢 線上 <span id="onlineCount">0</span> 人：</span>
         <span id="onlineNames" class="online-names"></span>
@@ -53,7 +53,7 @@
         <div class="range-panel">
           <label>最小值(分)<input type="number" id="minInput" min="1" /></label>
           <label>最大值(分)<input type="number" id="maxInput" min="1" /></label>
-          <span class="range-hint" id="rangeHint">CH 可右鍵自訂覆蓋</span>
+          <span class="range-hint" id="rangeHint">右鍵輸入死亡時間或中鍵輸入重生時間</span>
         </div>
         <div class="legend">
           <span class="legend-item"><span class="dot idle"></span>待機</span>
@@ -115,6 +115,7 @@
     <div class="password-row">
       <input type="password" id="roomPasswordInput" maxlength="6" placeholder="6 碼英文或數字" autocomplete="off" autocapitalize="off" spellcheck="false" />
       <button type="button" id="togglePasswordBtn" class="btn-secondary password-toggle" title="顯示 / 隱藏密碼">顯示</button>
+      <button type="button" id="randomPasswordBtn" class="btn-secondary password-toggle" title="產生一組隨機、沒人用過的房間密碼（建立新房間用）">🎲 隨機</button>
     </div>
     <p class="modal-note join-hint">密碼為 <b>6 個字元</b>，只能用英文大小寫或數字（大小寫不同視為不同密碼）。<br />輸入相同密碼的人會進到同一個房間、共用同一組計時器；輸入新的密碼就會建立新房間。建議不要用 123456、aaaaaa 這類太好猜的密碼。</p>
 
@@ -143,9 +144,32 @@
     </div>
     <p class="modal-note" id="modalStateNote"></p>
     <div class="modal-buttons">
+      <button id="modalToSpawnBtn" class="btn-secondary" title="改成輸入王的重生時間（等同中鍵）">改輸入重生時間</button>
       <button id="modalResetBtn" class="btn-secondary">恢復待機</button>
       <button id="modalCancelBtn" class="btn-secondary">取消</button>
       <button id="modalSaveBtn" class="btn-primary">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 中鍵：輸入 CH 重生時間（絕對時刻） -->
+<div id="spawnOverlay" class="modal-overlay hidden">
+  <div class="modal spawn-modal">
+    <h3 id="spawnTitle">輸入 CH 重生時間</h3>
+    <div class="time-input-row">
+      <label class="time-input-label">月<input type="number" id="spawnMonth" min="1" max="12" /></label>
+      <span class="time-colon">/</span>
+      <label class="time-input-label">日<input type="number" id="spawnDay" min="1" max="31" /></label>
+      <span class="spawn-gap"></span>
+      <label class="time-input-label">時<input type="number" id="spawnHour" min="0" max="23" /></label>
+      <span class="time-colon">:</span>
+      <label class="time-input-label">分<input type="number" id="spawnMinute" min="0" max="59" /></label>
+    </div>
+    <p class="modal-note">輸入王會<b>出現（重生）</b>的時刻（24 小時制），預設為現在。這個時刻就是此 CH 的出生時間，CH 會倒數到這個時刻後變成「出現中」，之後照最大值自動結束。適合一次輸入大量已知的重生時間。</p>
+    <p class="modal-note spawn-preview" id="spawnPreview"></p>
+    <div class="modal-buttons">
+      <button id="spawnCancelBtn" class="btn-secondary">取消</button>
+      <button id="spawnSaveBtn" class="btn-primary">儲存</button>
     </div>
   </div>
 </div>
