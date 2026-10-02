@@ -58,6 +58,7 @@ body {
 .pip-root .tabs-row { max-height: 15%; overflow-y: auto; flex-shrink: 0; }
 .pip-root .tab-item-compact {
   padding: 3px;
+  font-size: 13px;
   gap: 0;
 }
 .pip-root .tab-item-compact .tab-thumb {
@@ -236,20 +237,20 @@ body {
 
 .tabs-list {
   display: flex;
-  gap: 5px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .tab-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
+  gap: 10px;
+  padding: 8px 18px;
   border-radius: 7px;
   background: var(--card-bg);
   border: 1px solid var(--border);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 22px;
   user-select: none;
   white-space: nowrap;
   color: var(--text-dim);
@@ -263,14 +264,14 @@ body {
 }
 
 .tab-item .tab-thumb {
-  width: 18px;
-  height: 18px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
   border-radius: 4px;
 }
 
 .tab-item .close-btn {
-  font-size: 11px;
+  font-size: 18px;
   color: var(--text-faint);
   padding: 0 2px;
 }
@@ -278,13 +279,15 @@ body {
 .tab-item .close-btn:hover { color: var(--danger); }
 
 .add-tab-btn {
-  padding: 4px 10px;
+  padding: 8px 20px;
+  align-self: flex-start;
+  height: 54px;
   border-radius: 7px;
   border: 1px dashed var(--border);
   background: var(--card-bg);
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 24px;
   flex-shrink: 0;
 }
 .add-tab-btn:hover { background: #273449; }
@@ -494,7 +497,7 @@ body {
 .panel-title-row .admin-btn { font-size: 11px; padding: 3px 8px; }
 
 .tab-lock {
-  font-size: 10px;
+  font-size: 20px;
   opacity: 0.8;
 }
 
@@ -676,7 +679,7 @@ body.is-admin .log-del-btn { display: inline-block; }
 .modal-note { font-size: 12px; color: var(--text-dim); margin: 4px 0 14px; }
 
 /* 進入房間彈窗（暱稱 + 房間密碼） */
-.join-modal { width: 340px; max-width: calc(100vw - 32px); box-sizing: border-box; }
+.join-modal { width: 390px; max-width: calc(100vw - 32px); box-sizing: border-box; }
 .modal label.join-label {
   display: block;
   font-size: 13px;
@@ -788,3 +791,13 @@ body.is-admin .log-del-btn { display: inline-block; }
   font-size: 13px;
   z-index: 100;
 }
+
+/* 中鍵：重生時間視窗 */
+.spawn-modal { width: 360px; max-width: calc(100vw - 32px); box-sizing: border-box; }
+.spawn-modal .time-input-row input[type="number"] { width: 52px; }
+.spawn-gap { width: 10px; }
+.spawn-preview { color: #93c5fd; min-height: 1.2em; }
+
+/* 王選單放大後：分頁清單佔滿剩餘寬度，「＋」固定在第一行最右邊，不會自己掉到新的一行 */
+.tabs-row { flex-wrap: nowrap; }
+.tabs-row .tabs-list { flex: 1; min-width: 0; }
