@@ -801,3 +801,9 @@ body.is-admin .log-del-btn { display: inline-block; }
 /* 王選單放大後：分頁清單佔滿剩餘寬度，「＋」固定在第一行最右邊，不會自己掉到新的一行 */
 .tabs-row { flex-wrap: nowrap; }
 .tabs-row .tabs-list { flex: 1; min-width: 0; }
+
+/* 王選單：只顯示圖片（主畫面），按鈕高度維持放大後的大小 */
+.tab-item.tab-item-image:not(.tab-item-compact) { padding: 4px 10px; }
+.tab-item.tab-item-image:not(.tab-item-compact) .tab-thumb { width: 44px; height: 44px; }
+.time-input-row { margin-bottom: 16px; }
+.spawn-preview { margin-top: 0; }
