@@ -107,14 +107,43 @@ function isAdminSocketId(socketId) {
 
 // joiningIsAdmin = true 時（管理者自己要進房）連其他管理者的暱稱也一起比對；
 // 一般使用者只跟一般使用者比對。
-function isNicknameTaken(room, name, excludeSocketId, joiningIsAdmin) {
+// 同一個瀏覽器（clientId 相同）的連線視為「同一個人」：重新整理時舊連線還沒被伺服器偵測到斷線，
+// 或同時開兩個分頁，都不會被判定成「暱稱已有人使用」。
+function clientIdOf(socketId) {
+  const s = io.sockets.sockets.get(socketId);
+  return (s && s.data.clientId) || null;
+}
+
+function isNicknameTaken(room, name, excludeSocketId, joiningIsAdmin, joiningClientId) {
   const norm = normalizeName(name);
   for (const [id, n] of room.connectedUsers.entries()) {
     if (id === excludeSocketId || normalizeName(n) !== norm) continue;
+    if (joiningClientId && clientIdOf(id) === joiningClientId) continue; // 是自己（另一個分頁 / 舊連線）
     if (!joiningIsAdmin && isAdminSocketId(id)) continue;
     return true;
   }
   return false;
+}
+
+// 房間內的使用者名單（同一個瀏覽器的多條連線合併成一人）
+function roomUserList(room) {
+  const seen = new Map();
+  for (const [id, name] of room.connectedUsers.entries()) {
+    const key = (clientIdOf(id) || id) + '|' + normalizeName(name);
+    const hidden = isAdminSocketId(id);
+    if (!seen.has(key)) seen.set(key, { id, name, hidden });
+    else if (hidden) seen.get(key).hidden = true;
+  }
+  return Array.from(seen.values());
+}
+
+// 跟 targetSocketId 同一個瀏覽器、在同一個房間的所有連線
+function sameClientSocketsInRoom(room, targetSocketId) {
+  const target = io.sockets.sockets.get(targetSocketId);
+  if (!target || target.data.roomId !== room.id) return [];
+  const cid = target.data.clientId;
+  if (!cid) return [target];
+  return Array.from(io.sockets.sockets.values()).filter((s) => s.data.roomId === room.id && s.data.clientId === cid);
 }
 
 function broadcastState(room) {
@@ -124,7 +153,7 @@ function broadcastState(room) {
 }
 
 function broadcastUsers(room) {
-  const all = Array.from(room.connectedUsers.entries()).map(([id, name]) => ({ id, name, hidden: isAdminSocketId(id) }));
+  const all = roomUserList(room);
   const visible = all.filter((u) => !u.hidden).map(({ id, name }) => ({ id, name }));
   for (const [, s] of io.sockets.sockets) {
     if (s.data.roomId !== room.id) continue;
@@ -142,7 +171,7 @@ function buildAdminRoomList() {
       room.tabs.forEach((t) => t.channels.forEach((c) => { if (c.state !== 'idle') activeCount++; }));
       return {
         password: room.password,
-        users: Array.from(room.connectedUsers.entries()).filter(([id]) => !isAdminSocketId(id)).map(([, n]) => n),
+        users: roomUserList(room).filter((u) => !u.hidden).map((u) => u.name),
         activeCount,
         createdAt: room.createdAt
       };
@@ -263,7 +292,8 @@ io.on('connection', (socket) => {
   // ---------- 進入房間（暱稱 + 房間密碼） ----------
   // 同一個密碼 = 同一個房間；密碼對應的房間不存在時會自動建立。
   socket.on('joinRoom', (payload) => {
-    const { nickname, password } = payload || {};
+    const { nickname, password, clientId } = payload || {};
+    if (typeof clientId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(clientId)) socket.data.clientId = clientId;
     const trimmedName = (typeof nickname === 'string' ? nickname : '').trim().slice(0, 20);
     const pw = (typeof password === 'string' ? password : '').trim();
 
@@ -288,7 +318,7 @@ io.on('connection', (socket) => {
         socket.emit('join:error', { field: 'nickname', code: 'banned', message: '這個暱稱已被管理者移出此房間，請使用其他暱稱' });
         return;
       }
-      if (isNicknameTaken(existing, trimmedName, socket.id, !!socket.data.isAdmin)) {
+      if (isNicknameTaken(existing, trimmedName, socket.id, !!socket.data.isAdmin, socket.data.clientId)) {
         socket.emit('join:error', { field: 'nickname', code: 'taken', message: '這個暱稱在此房間已經有人在使用，請換一個' });
         return;
       }
@@ -314,6 +344,18 @@ io.on('connection', (socket) => {
     broadcastUsers(room);
   });
 
+  // 產生一組隨機房間密碼（符合規則，且不會跟目前已存在的房間重複）
+  socket.on('generateRoomPassword', (cb) => {
+    if (typeof cb !== 'function') return;
+    const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let attempt = 0; attempt < 50; attempt++) {
+      let pw = '';
+      for (let i = 0; i < 6; i++) pw += CHARS[crypto.randomInt(CHARS.length)];
+      if (!rooms.has(roomIdFromPassword(pw))) return cb(pw);
+    }
+    cb(null);
+  });
+
   socket.on('leaveRoom', () => {
     leaveCurrentRoom(socket);
   });
@@ -324,7 +366,7 @@ io.on('connection', (socket) => {
     if (!room || !socket.data.isAdmin) return;
     const trimmed = (name || '').trim().slice(0, 20);
     if (!trimmed) return;
-    if (isNicknameTaken(room, trimmed, socket.id, true)) {
+    if (isNicknameTaken(room, trimmed, socket.id, true, socket.data.clientId)) {
       socket.emit('error:toast', '這個暱稱在此房間已經有人在使用');
       return;
     }
@@ -351,18 +393,20 @@ io.on('connection', (socket) => {
     if (!room || !socket.data.isAdmin) return;
     const trimmed = (newName || '').trim().slice(0, 20);
     if (!trimmed) return;
-    const targetSocket = io.sockets.sockets.get(targetSocketId);
-    if (!targetSocket || targetSocket.data.roomId !== room.id) return;
+    const targets = sameClientSocketsInRoom(room, targetSocketId);
+    if (targets.length === 0) return;
 
-    const oldName = targetSocket.data.nickname;
+    const oldName = targets[0].data.nickname;
     if (room.mutedNicknames.has(normalizeName(oldName))) { // 被禁止的人改名後仍維持禁止
       room.mutedNicknames.delete(normalizeName(oldName));
       room.mutedNicknames.set(normalizeName(trimmed), trimmed);
       broadcastAdminMutedList(room);
     }
-    targetSocket.data.nickname = trimmed;
-    room.connectedUsers.set(targetSocketId, trimmed);
-    targetSocket.emit('forceNickname', trimmed);
+    targets.forEach((t) => {
+      t.data.nickname = trimmed;
+      room.connectedUsers.set(t.id, trimmed);
+      t.emit('forceNickname', trimmed);
+    });
     broadcastUsers(room);
     addLog(room, `管理者將「${oldName}」的暱稱改為「${trimmed}」`, 'admin');
   });
@@ -391,12 +435,11 @@ io.on('connection', (socket) => {
     if (!room || !socket.data.isAdmin || !nickname) return;
 
     room.bannedNicknames.add(normalizeName(nickname));
-    const targetSocket = io.sockets.sockets.get(targetSocketId);
-    if (targetSocket && targetSocket.data.roomId === room.id) {
-      targetSocket.emit('removedByAdmin');
-      leaveCurrentRoom(targetSocket);
-      targetSocket.disconnect(true);
-    }
+    sameClientSocketsInRoom(room, targetSocketId).forEach((t) => {
+      t.emit('removedByAdmin');
+      leaveCurrentRoom(t);
+      t.disconnect(true);
+    });
     room.connectedUsers.delete(targetSocketId);
     broadcastUsers(room);
     addLog(room, `管理者將「${nickname}」移出房間`, 'admin');
@@ -562,6 +605,38 @@ io.on('connection', (socket) => {
 
     const label = typeof deathTimeLabel === 'string' ? deathTimeLabel.slice(0, 10) : '';
     addLog(room, `${nickname} 回報「${tab.name}」CH${channelIndex + 1} 的死亡時間為 ${label}，開始倒數`, 'start');
+    broadcastState(room);
+  });
+
+  // ---------- CH 中鍵：輸入王的「重生時間」（絕對時刻，通常是未來） ----------
+  // 重生時間 = 出生時間 = 起算點 + 最小值，所以起算點 = 重生時間 - 最小值；
+  // 之後到重生時間變「出現中」，再照最大值 + 10 分鐘自動恢復待機。
+  socket.on('channelSetSpawn', ({ tabId, channelIndex, spawnTimeEpoch, spawnTimeLabel } = {}) => {
+    const room = requireRoom();
+    if (!room) return;
+    const nickname = socket.data.nickname;
+    const tab = findTab(room, tabId);
+    if (!tab) return;
+    const ch = tab.channels[channelIndex];
+    if (!ch) return;
+
+    const spawnMs = Number(spawnTimeEpoch);
+    if (!Number.isFinite(spawnMs)) return;
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+    if (spawnMs > now + 7 * DAY || spawnMs < now - DAY) {
+      socket.emit('error:toast', '重生時間必須在過去 1 天到未來 7 天之內');
+      return;
+    }
+
+    ch.customMin = null;
+    ch.customMax = null;
+    ch.startTime = spawnMs - tab.minMinutes * 60000;
+    ch.state = spawnMs <= now ? 'appearing' : 'counting';
+    ch.startedBy = nickname;
+
+    const label = typeof spawnTimeLabel === 'string' ? spawnTimeLabel.slice(0, 20) : '';
+    addLog(room, `${nickname} 設定「${tab.name}」CH${channelIndex + 1} 的重生時間為 ${label}，開始倒數`, 'start');
     broadcastState(room);
   });
 
