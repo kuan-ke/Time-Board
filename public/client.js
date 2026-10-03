@@ -7,7 +7,6 @@ let tabs = [];
 let currentTabId = null;
 let clockOffset = 0; // serverTime - Date.now()
 let myNickname = null;
-let isAdmin = false;
 let onlineUsers = []; // [{id, name}]
 
 let modalContext = null; // { tabId, channelIndex }
@@ -30,11 +29,6 @@ const onlineCountEl = document.getElementById('onlineCount');
 const onlineNamesEl = document.getElementById('onlineNames');
 
 const myNicknameDisplay = document.getElementById('myNicknameDisplay');
-const adminEditSelfBtn = document.getElementById('adminEditSelfBtn');
-const adminPanel = document.getElementById('adminPanel');
-const adminUserList = document.getElementById('adminUserList');
-const adminMutedList = document.getElementById('adminMutedList');
-let mutedList = []; // 被禁止操作的暱稱
 
 const nicknameOverlay = document.getElementById('nicknameOverlay');
 const nicknameInput = document.getElementById('nicknameInput');
@@ -48,7 +42,6 @@ const modalTitle = document.getElementById('modalTitle');
 const modalResetBtn = document.getElementById('modalResetBtn');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
 const modalSaveBtn = document.getElementById('modalSaveBtn');
-const adminClearLogBtn = document.getElementById('adminClearLogBtn');
 const rangeHintEl = document.getElementById('rangeHint');
 
 // ---------- 進入房間：暱稱 + 房間密碼 ----------
@@ -189,8 +182,7 @@ togglePasswordBtn.addEventListener('click', () => {
 });
 
 function updateNicknameDisplay() {
-  myNicknameDisplay.textContent = myNickname ? `您的暱稱：${myNickname}${isAdmin ? '（👻 隱身中）' : ''}` : '';
-  myNicknameDisplay.title = isAdmin ? '管理者不會出現在其他人的線上人數與名單中' : '';
+  myNicknameDisplay.textContent = myNickname ? `您的暱稱：${myNickname}` : '';
 }
 
 function updateRoomDisplay() {
@@ -225,21 +217,11 @@ socket.on('join:ack', ({ nickname, created }) => {
   updateNicknameDisplay();
   updateRoomDisplay();
   hideNicknameOverlay();
-  adminSwitchFrom = null;
-  if (isAdmin) renderAdminRoomList();
   if (manualJoinPending) showToast(created ? '已建立新房間，把密碼分享給隊友就能一起使用' : '已進入房間');
   manualJoinPending = false;
 });
 
 socket.on('join:error', ({ field, code, message }) => {
-  // 管理者從「所有房間」切換失敗（例如暱稱在那間已被使用）：留在原本的房間，只顯示提示
-  if (adminSwitchFrom !== null) {
-    myRoomPassword = adminSwitchFrom;
-    adminSwitchFrom = null;
-    manualJoinPending = false;
-    showToast('無法進入該房間：' + message);
-    return;
-  }
   joined = false;
   manualJoinPending = false;
   updateRoomDisplay();
@@ -289,206 +271,21 @@ function showToast(msg) {
 
 initNickname();
 
-// ---------- Admin ----------
-// 管理者密鑰在每次連線（含斷線重連）時都會重新送出，而且一定在 joinRoom 之前，
-// 這樣掛機太久斷線重連後，管理者仍然維持隱身（見 socket 'connect'）。
-const adminKeyFromUrl = new URLSearchParams(window.location.search).get('admin');
-let adminKeyRejected = false;
-
-socket.on('adminAuth:result', (ok) => {
-  isAdmin = ok;
-  if (ok) {
-    document.body.classList.add('is-admin');
-    adminPanel.classList.remove('hidden');
-    adminEditSelfBtn.classList.remove('hidden');
-    adminClearLogBtn.classList.remove('hidden');
-    renderAdminUserList();
-    renderAdminMutedList();
-    renderAdminRoomList();
-    updateNicknameDisplay();
-  } else if (!adminKeyRejected) {
-    adminKeyRejected = true;
-    alert('管理者密鑰錯誤');
-  }
-});
-
-adminClearLogBtn.addEventListener('click', () => {
-  if (confirm('確定要清空全部操作紀錄嗎？此動作無法復原。')) {
-    socket.emit('adminClearLog');
-  }
-});
-
-adminEditSelfBtn.addEventListener('click', () => {
-  const newName = prompt('（管理者）修改您自己的暱稱：', myNickname || '');
-  if (newName !== null && newName.trim()) {
-    socket.emit('setNickname', newName.trim().slice(0, 20));
-  }
-});
-
+// ---------- 線上名單 ----------
 socket.on('users:update', (list) => {
   onlineUsers = list;
   renderOnlineUsersBar();
-  if (isAdmin) renderAdminUserList();
 });
 
 function renderOnlineUsersBar() {
-  // 隱身的管理者不列入（管理者自己看到的人數也跟一般人一樣）
-  const visible = onlineUsers.filter((u) => !u.hidden);
-  onlineCountEl.textContent = visible.length;
-  onlineNamesEl.textContent = visible.map((u) => u.name).join('、');
-}
-
-function renderAdminUserList() {
-  adminUserList.innerHTML = '';
-  const players = onlineUsers.filter((u) => !u.hidden); // 不列出管理者（包含自己）
-  if (players.length === 0) {
-    adminUserList.innerHTML = '<span style="color:#64748b;">此房間目前沒有其他使用者</span>';
-    return;
-  }
-  players.forEach((u) => {
-    const row = document.createElement('div');
-    row.className = 'admin-user-row';
-
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'u-name';
-    nameSpan.textContent = u.name;
-    row.appendChild(nameSpan);
-
-    const renameBtn = document.createElement('button');
-    renameBtn.textContent = '改名';
-    renameBtn.title = '修改此人的暱稱';
-    renameBtn.addEventListener('click', () => {
-      const newName = prompt(`修改「${u.name}」的暱稱：`, u.name);
-      if (newName !== null && newName.trim()) {
-        socket.emit('adminRenameUser', { targetSocketId: u.id, newName: newName.trim() });
-      }
-    });
-    row.appendChild(renameBtn);
-
-    const isMutedUser = mutedList.some((n) => n.toLowerCase() === u.name.toLowerCase());
-    const muteBtn = document.createElement('button');
-    muteBtn.textContent = isMutedUser ? '解除禁止' : '禁止操作';
-    muteBtn.title = '禁止此人進行任何操作（點 CH、擊殺、右鍵回報、分頁編輯），已存在的倒數不受影響';
-    muteBtn.addEventListener('click', () => {
-      if (isMutedUser) {
-        socket.emit('adminUnmuteUser', { nickname: u.name });
-      } else if (confirm(`確定要禁止「${u.name}」進行任何操作嗎？`)) {
-        socket.emit('adminMuteUser', { nickname: u.name });
-      }
-    });
-    row.appendChild(muteBtn);
-
-    const removeBtn = document.createElement('button');
-    removeBtn.textContent = '移除';
-    removeBtn.className = 'danger';
-    removeBtn.title = '將此人移出網站';
-    removeBtn.addEventListener('click', () => {
-      if (confirm(`確定要將「${u.name}」移除出網站嗎？此暱稱之後將無法再使用。`)) {
-        socket.emit('adminRemoveUser', { targetSocketId: u.id, nickname: u.name });
-      }
-    });
-    row.appendChild(removeBtn);
-
-    adminUserList.appendChild(row);
-  });
-}
-
-// ---------- 管理者：所有房間列表（可一鍵進入任一房間） ----------
-const adminRoomList = document.getElementById('adminRoomList');
-const adminRoomCount = document.getElementById('adminRoomCount');
-let adminRooms = [];
-let adminSwitchFrom = null; // 管理者切換房間前所在的房間密碼（切換失敗時用來還原）
-
-socket.on('admin:rooms', (list) => {
-  adminRooms = list || [];
-  if (isAdmin) renderAdminRoomList();
-});
-
-function renderAdminRoomList() {
-  adminRoomCount.textContent = adminRooms.length;
-  adminRoomList.innerHTML = '';
-  if (adminRooms.length === 0) {
-    adminRoomList.innerHTML = '<span style="color:#64748b;">目前沒有任何房間</span>';
-    return;
-  }
-  adminRooms.forEach((r) => {
-    const isCurrent = joined && r.password === myRoomPassword;
-    const row = document.createElement('div');
-    row.className = 'admin-user-row admin-room-row' + (isCurrent ? ' current' : '');
-    row.title = r.users.length ? `線上：${r.users.join('、')}` : '目前沒有人在線';
-
-    const pw = document.createElement('span');
-    pw.className = 'r-pw';
-    pw.textContent = r.password;
-    row.appendChild(pw);
-
-    const meta = document.createElement('span');
-    meta.className = 'r-meta';
-    meta.textContent = `👥${r.users.length} ⏳${r.activeCount}`;
-    row.appendChild(meta);
-
-    if (isCurrent) {
-      const here = document.createElement('span');
-      here.className = 'r-meta';
-      here.textContent = '（目前所在）';
-      row.appendChild(here);
-    } else {
-      const goBtn = document.createElement('button');
-      goBtn.textContent = '進入';
-      goBtn.title = '切換到這個房間';
-      goBtn.addEventListener('click', () => adminJoinRoom(r.password));
-      row.appendChild(goBtn);
-    }
-    adminRoomList.appendChild(row);
-  });
-}
-
-function adminJoinRoom(password) {
-  if (!myNickname) {
-    myRoomPassword = password;
-    showNicknameOverlay();
-    return;
-  }
-  adminSwitchFrom = joined ? myRoomPassword : null;
-  myRoomPassword = password;
-  manualJoinPending = true;
-  socket.emit('joinRoom', { nickname: myNickname, password, clientId: myClientId });
-}
-
-socket.on('admin:mutedList', (list) => {
-  mutedList = list || [];
-  if (isAdmin) {
-    renderAdminMutedList();
-    renderAdminUserList();
-  }
-});
-
-function renderAdminMutedList() {
-  adminMutedList.innerHTML = '';
-  if (mutedList.length === 0) {
-    adminMutedList.innerHTML = '<span style="color:#64748b;">目前沒有被禁止的使用者</span>';
-    return;
-  }
-  mutedList.forEach((name) => {
-    const row = document.createElement('div');
-    row.className = 'admin-user-row';
-    const label = document.createElement('span');
-    label.className = 'u-name';
-    label.textContent = name;
-    row.appendChild(label);
-    const btn = document.createElement('button');
-    btn.textContent = '解除禁止';
-    btn.addEventListener('click', () => socket.emit('adminUnmuteUser', { nickname: name }));
-    row.appendChild(btn);
-    adminMutedList.appendChild(row);
-  });
+  onlineCountEl.textContent = onlineUsers.length;
+  onlineNamesEl.textContent = onlineUsers.map((u) => u.name).join('、');
 }
 
 // ---------- Socket connection status ----------
 socket.on('connect', () => {
   connStatusEl.textContent = '已連線';
   connStatusEl.className = 'conn-status ok';
-  if (adminKeyFromUrl && !adminKeyRejected) socket.emit('adminAuth', adminKeyFromUrl);
   // 已經有暱稱與房間密碼：自動進入（或斷線後重新進入）原本的房間
   if (myNickname && myRoomPassword && (joined || storageGet(ROOM_KEY))) {
     socket.emit('joinRoom', { nickname: myNickname, password: myRoomPassword, clientId: myClientId });
@@ -569,7 +366,7 @@ socket.on('log:clear', () => {
 
 function buildLogRow(entry) {
   const row = document.createElement('div');
-  row.className = 'log-row' + (entry.type === 'admin' ? ' admin' : '');
+  row.className = 'log-row' + (entry.type === 'admin' ? ' sys' : '');
   row.dataset.id = entry.id;
 
   const time = document.createElement('span');
@@ -581,15 +378,6 @@ function buildLogRow(entry) {
   msg.className = 'log-message';
   msg.textContent = entry.message;
   row.appendChild(msg);
-
-  const delBtn = document.createElement('button');
-  delBtn.className = 'log-del-btn';
-  delBtn.textContent = '✕';
-  delBtn.title = '刪除這筆紀錄';
-  delBtn.addEventListener('click', () => {
-    socket.emit('adminDeleteLogEntry', entry.id);
-  });
-  row.appendChild(delBtn);
 
   return row;
 }
@@ -1205,9 +993,6 @@ async function openPip() {
   link.href = new URL('style.css', window.location.href).href;
   pipDoc.head.appendChild(link);
 
-  if (document.body.classList.contains('is-admin')) {
-    pipDoc.body.classList.add('is-admin');
-  }
   pipDoc.body.classList.add('pip-body');
 
   pipDoc.body.innerHTML = `
