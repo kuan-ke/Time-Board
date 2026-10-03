@@ -883,6 +883,7 @@ function renderStatusPanel() {
       const base = {
         tabId: tab.id,
         tabName: tab.name,
+        tabImage: tab.image,
         channelIndex: idx,
         who: ch.startedBy || '未知',
         spawnAt
@@ -923,6 +924,16 @@ function renderStatusColumn(container, rows, emptyText, showTabName) {
   rows.forEach((r) => {
     const row = doc.createElement('div');
     row.className = 'status-row' + (r.soon ? ' soon' : '');
+
+    // 王的小圖示（「本王」只顯示圖示，「總頻道」顯示圖示 + 王名）
+    if (r.tabImage) {
+      const thumb = doc.createElement('img');
+      thumb.className = 'status-thumb';
+      thumb.src = new URL(`images/${r.tabImage}`, window.location.href).href;
+      thumb.alt = r.tabName;
+      thumb.title = r.tabName;
+      row.appendChild(thumb);
+    }
 
     if (showTabName) {
       const tag = doc.createElement('span');
@@ -1170,7 +1181,8 @@ async function openPip() {
   const aspect = rightRect.width / Math.max(1, rightRect.height);
   const baseHeight = Math.min(720, Math.max(380, Math.round((window.screen.height || 900) * 0.6)));
   const baseWidth = Math.max(260, Math.round(baseHeight * aspect));
-  const targetWidth = Math.min(Math.round(baseWidth * 1.2), (window.screen.availWidth || 1600) - 40);
+  // 寬度：原本的 1.3 倍，且至少 460px，確保最上排能一次放下 10 隻王的圖示
+  const targetWidth = Math.min(Math.max(Math.round(baseWidth * 1.3), 460), (window.screen.availWidth || 1600) - 40);
   const targetHeight = Math.min(Math.round(baseHeight * 1.4), (window.screen.availHeight || 900) - 40);
 
   try {
