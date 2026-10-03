@@ -816,3 +816,9 @@ body.is-admin .log-del-btn { display: inline-block; }
 .tab-item.tab-item-image:not(.tab-item-compact) .tab-thumb { width: 44px; height: 44px; }
 .time-input-row { margin-bottom: 16px; }
 .spawn-preview { margin-top: 0; }
+
+/* 進行中頻道：王名前的小圖示 */
+.status-row .status-thumb { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; border-radius: 3px; }
+.pip-root .status-row .status-thumb { width: 18px; height: 18px; }
+/* 子母畫面的王選單間距縮小，一排放得下 10 隻王 */
+.pip-root .tabs-list { gap: 4px; }
