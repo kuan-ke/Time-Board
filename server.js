@@ -125,25 +125,30 @@ function isNicknameTaken(room, name, excludeSocketId, joiningIsAdmin, joiningCli
   return false;
 }
 
-// 房間內的使用者名單（同一個瀏覽器的多條連線合併成一人）
+// 房間內的使用者名單（同一個瀏覽器、同暱稱、同身分的多條連線合併成一人）。
+// 「是不是管理者」也是合併條件之一：同一個瀏覽器一個分頁當一般使用者、另一個分頁用 admin 網址時，
+// 兩者分開計算，只有 admin 那個隱身，一般使用者照常顯示。
 function roomUserList(room) {
   const seen = new Map();
   for (const [id, name] of room.connectedUsers.entries()) {
-    const key = (clientIdOf(id) || id) + '|' + normalizeName(name);
     const hidden = isAdminSocketId(id);
+    const key = (clientIdOf(id) || id) + '|' + normalizeName(name) + '|' + (hidden ? 'admin' : 'user');
     if (!seen.has(key)) seen.set(key, { id, name, hidden });
-    else if (hidden) seen.get(key).hidden = true;
   }
   return Array.from(seen.values());
 }
 
-// 跟 targetSocketId 同一個瀏覽器、在同一個房間的所有連線
+// 跟 targetSocketId 同一個瀏覽器、同一個身分（一般 / 管理者）、在同一個房間的所有連線
+// （管理者對一般使用者改名、移除時，不會波及同一個瀏覽器裡的管理者分頁）
 function sameClientSocketsInRoom(room, targetSocketId) {
   const target = io.sockets.sockets.get(targetSocketId);
   if (!target || target.data.roomId !== room.id) return [];
   const cid = target.data.clientId;
   if (!cid) return [target];
-  return Array.from(io.sockets.sockets.values()).filter((s) => s.data.roomId === room.id && s.data.clientId === cid);
+  const targetIsAdmin = !!target.data.isAdmin;
+  return Array.from(io.sockets.sockets.values()).filter(
+    (s) => s.data.roomId === room.id && s.data.clientId === cid && !!s.data.isAdmin === targetIsAdmin
+  );
 }
 
 function broadcastState(room) {
