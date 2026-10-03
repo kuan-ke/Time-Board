@@ -21,7 +21,40 @@ const EMPTY_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 // 建議在 Render 的環境變數設定 ADMIN_KEY，不要用預設值。
 const ADMIN_KEY = process.env.ADMIN_KEY || 'change-me-admin-key';
 
-app.use(express.static(path.join(__dirname, 'public')));
+const fs = require('fs');
+
+// 比對管理者密鑰（固定時間比較，避免被逐字猜測）
+function isAdminKey(key) {
+  if (typeof key !== 'string') return false;
+  const a = Buffer.from(key);
+  const b = Buffer.from(ADMIN_KEY);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// 首頁：只有網址帶正確 ?admin=密鑰 時，才在頁面裡插入管理者腳本；
+// 一般使用者拿到的 index.html 跟 client.js 完全沒有任何管理者相關的程式碼。
+const INDEX_PATH = path.join(__dirname, 'public', 'index.html');
+app.get(['/', '/index.html'], (req, res) => {
+  fs.readFile(INDEX_PATH, 'utf8', (err, html) => {
+    if (err) return res.status(500).send('Server error');
+    res.set('Cache-Control', 'no-store');
+    if (isAdminKey(req.query.admin)) {
+      const tag = `<script src="/admin.js?k=${encodeURIComponent(req.query.admin)}"></script>\n`;
+      html = html.replace('<script src="client.js"></script>', tag + '<script src="client.js"></script>');
+    }
+    res.type('html').send(html);
+  });
+});
+
+// 管理者腳本放在 public 之外，密鑰正確才給，否則一律回 404（看起來就像不存在）
+const ADMIN_JS_PATH = path.join(__dirname, 'admin', 'admin.js');
+app.get('/admin.js', (req, res) => {
+  if (!isAdminKey(req.query.k)) return res.status(404).send('Not Found');
+  res.set('Cache-Control', 'no-store');
+  res.type('application/javascript').sendFile(ADMIN_JS_PATH);
+});
+
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 let nextTabId = 1;
 
@@ -159,13 +192,9 @@ function broadcastState(room) {
 }
 
 function broadcastUsers(room) {
-  const all = roomUserList(room);
-  const visible = all.filter((u) => !u.hidden).map(({ id, name }) => ({ id, name }));
-  for (const [, s] of io.sockets.sockets) {
-    if (s.data.roomId !== room.id) continue;
-    // 一般使用者只會收到「看得見的人」；管理者收到完整名單（隱身者會標記 hidden）
-    s.emit('users:update', s.data.isAdmin ? all : visible);
-  }
+  // 所有人（包含管理者自己）收到的都是同一份「看得見的人」名單，資料裡不會出現隱身相關的欄位
+  const visible = roomUserList(room).filter((u) => !u.hidden).map(({ id, name }) => ({ id, name }));
+  io.to(room.id).emit('users:update', visible);
   scheduleAdminRooms();
 }
 
@@ -384,7 +413,7 @@ io.on('connection', (socket) => {
 
   // ---------- 管理者驗證 ----------
   socket.on('adminAuth', (key) => {
-    const ok = typeof key === 'string' && key === ADMIN_KEY;
+    const ok = isAdminKey(key);
     socket.data.isAdmin = ok;
     socket.emit('adminAuth:result', ok);
     const room = getRoom(socket);
