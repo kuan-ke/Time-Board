@@ -36,7 +36,7 @@ const BOSS_PRESETS = [
   { name: '沼澤巨鱷',   min: 45,  max: 45,  image: 'swamp-crocodile.png' },
   { name: '巴洛古',     min: 240, max: 360, image: 'barogu.png' },
   { name: '艾利傑(beta)', min: 45, max: 60,  image: 'elliget.png' },
-  { name: '雪毛怪人',   min: 45,  max: 60,  image: 'snow-fur-monster.png' }
+  { name: '雪毛怪人(beta)', min: 45,  max: 60,  image: 'snow-fur-monster.png' }
 ];
 
 function createChannel() {
