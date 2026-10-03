@@ -461,6 +461,15 @@ body {
 .ch-btn.appearing { background: var(--appearing-bg); color: var(--appearing-text); }
 
 .ch-btn.flash { animation: flashPulse 1s ease-in-out 3; }
+
+/* 出現中：橘色持續閃爍（主畫面、子母畫面的 CH 格子與圖例圓點） */
+@keyframes appearingBlink {
+  0%, 100% { background: var(--appearing-bg); }
+  50% { background: #7c2d12; }
+}
+.ch-btn.appearing { animation: appearingBlink 1s ease-in-out infinite; }
+.ch-btn.appearing.flash { animation: appearingBlink 1s ease-in-out infinite, flashPulse 1s ease-in-out 3; }
+.dot.appearing { animation: appearingBlink 1s ease-in-out infinite; }
 @keyframes flashPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.8); }
   50% { box-shadow: 0 0 0 6px rgba(249, 115, 22, 0); }
