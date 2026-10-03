@@ -152,7 +152,7 @@ body {
   text-overflow: ellipsis;
 }
 
-.admin-btn {
+.top-btn {
   border: 1px solid var(--border);
   background: var(--card-bg);
   color: var(--text);
@@ -172,59 +172,6 @@ body {
 }
 .conn-status.ok { background: #14532d; color: #86efac; }
 .conn-status.err { background: var(--danger-bg); color: #fca5a5; }
-
-/* ---------- Admin panel ---------- */
-.admin-panel {
-  background: #1a2540;
-  border: 1px solid #2a3a5c;
-  color: var(--text);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  max-height: 150px;
-  overflow-y: auto;
-}
-.admin-panel-title {
-  font-weight: 700;
-  color: #93c5fd;
-  white-space: nowrap;
-}
-.admin-user-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.admin-user-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: #0f1830;
-  padding: 3px 6px;
-  border-radius: 8px;
-  border: 1px solid #2a3a5c;
-}
-.admin-user-row .u-name { font-weight: 600; margin-right: 2px; }
-.admin-user-row button {
-  border: none;
-  background: #2a3a5c;
-  color: var(--text);
-  border-radius: 5px;
-  padding: 2px 6px;
-  cursor: pointer;
-  font-size: 11px;
-}
-.admin-user-row button:hover { background: #3a4d78; }
-.admin-user-row button.danger { background: #5b1a1a; color: #fca5a5; }
-.admin-user-row button.danger:hover { background: #7f1d1d; }
-.admin-rooms-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-basis: 100%; }
-.admin-room-row.current { border-color: #8b5cf6; background: #221a3d; }
-.admin-room-row .r-pw { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; color: #c4b5fd; }
-.admin-room-row .r-meta { color: var(--text-dim); }
 
 /* ---------- Tabs ---------- */
 .tabs-row {
@@ -503,7 +450,6 @@ body {
   flex-shrink: 0;
 }
 .panel-title-row .panel-title { margin-bottom: 0; }
-.panel-title-row .admin-btn { font-size: 11px; padding: 3px 8px; }
 
 .tab-lock {
   font-size: 20px;
@@ -515,19 +461,6 @@ body {
   cursor: not-allowed;
 }
 
-.log-del-btn {
-  display: none;
-  margin-left: auto;
-  border: none;
-  background: transparent;
-  color: var(--text-faint);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 0 3px;
-  flex-shrink: 0;
-}
-.log-del-btn:hover { color: var(--danger); }
-body.is-admin .log-del-btn { display: inline-block; }
 
 .scrollable {
   overflow-y: auto;
@@ -628,7 +561,7 @@ body.is-admin .log-del-btn { display: inline-block; }
   border-radius: 5px;
   background: var(--card-bg-2);
 }
-.log-row.admin { background: #241a33; }
+.log-row.sys { background: #241a33; }
 .log-row .log-time {
   color: var(--text-faint);
   font-family: "Consolas", monospace;
