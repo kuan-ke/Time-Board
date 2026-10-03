@@ -18,25 +18,13 @@
       </div>
     </div>
     <div class="top-bar-right">
-      <button id="pipBtn" class="admin-btn" title="開啟子母畫面（浮動在最上層的小視窗）">📺 子母畫面</button>
+      <button id="pipBtn" class="top-btn" title="開啟子母畫面（浮動在最上層的小視窗）">📺 子母畫面</button>
       <span id="roomDisplay" class="room-badge hidden" title="點一下顯示 / 隱藏房間密碼">🔐 房間：<span id="roomPasswordText">••••</span></span>
-      <button id="switchRoomBtn" class="admin-btn hidden" title="離開目前房間，輸入其他房間密碼">換房間</button>
+      <button id="switchRoomBtn" class="top-btn hidden" title="離開目前房間，輸入其他房間密碼">換房間</button>
       <span id="myNicknameDisplay" class="my-nickname"></span>
-      <button id="adminEditSelfBtn" class="admin-btn hidden" title="管理者：修改自己的暱稱">✎</button>
       <div id="connStatus" class="conn-status">連線中...</div>
     </div>
   </header>
-
-  <div id="adminPanel" class="admin-panel hidden">
-    <span class="admin-panel-title">🔑 管理者：</span>
-    <div id="adminUserList" class="admin-user-list"></div>
-    <span class="admin-panel-title" id="adminMutedTitle" style="margin-left:14px;">🚫 已禁止操作：</span>
-    <div id="adminMutedList" class="admin-user-list"></div>
-    <div class="admin-rooms-row">
-      <span class="admin-panel-title">🏠 所有房間（<span id="adminRoomCount">0</span>）：</span>
-      <div id="adminRoomList" class="admin-user-list"></div>
-    </div>
-  </div>
 
   <div class="main-row">
     <div class="main-left">
@@ -91,7 +79,6 @@
       <div class="panel log-panel">
         <div class="panel-title-row">
           <div class="panel-title">🗂 操作紀錄</div>
-          <button id="adminClearLogBtn" class="admin-btn hidden" title="清空全部操作紀錄">清空紀錄</button>
         </div>
         <div id="logList" class="log-list scrollable">
           <div class="status-empty">尚無任何操作紀錄</div>
